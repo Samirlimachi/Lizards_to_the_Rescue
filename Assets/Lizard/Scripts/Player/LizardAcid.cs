@@ -45,17 +45,38 @@ namespace Lizards
             var cfg = p.Config;
             Ammo -= cfg.acidCost;
             nextShot = Time.time + cfg.acidCooldown;
-            p.SetMouthBusy(0.25f);
+            p.SetMouthBusy(0.3f);
 
+            // Como la lengua: apunta al punto de la mira y se gira hacia él antes de escupir.
+            Vector3 aim = AimPoint();
+            p.Motor.FaceTowards(aim, 0.45f);
+            StartCoroutine(SpitAfterTurn(aim));
+            return true;
+        }
+
+        /// <summary>Punto al que apunta la mira (lo que tiene delante la cámara) o, si no hay nada, un punto lejano.</summary>
+        Vector3 AimPoint()
+        {
+            if (p.Tongue && p.Tongue.AimHasHit) return p.Tongue.AimPoint;
+            Transform cam = p.CameraRig ? p.CameraRig.CameraTransform : null;
+            if (!cam) return p.MouthPosition + transform.forward * 20f;
+            return cam.position + cam.forward * 40f;
+        }
+
+        System.Collections.IEnumerator SpitAfterTurn(Vector3 aim)
+        {
+            // Deja girar un instante para que el escupitajo salga de la boca ya orientada.
+            yield return new WaitForSeconds(0.1f);
+            var cfg = p.Config;
             Vector3 origin = p.MouthPosition;
-            Vector3 aim = p.Tongue.AimHasHit ? p.Tongue.AimPoint : origin + AimForward() * 20f;
             Vector3 dir = (aim - origin).normalized;
-            if (Vector3.Dot(dir, AimForward()) < 0.2f) dir = AimForward();
-            AcidProjectile.Spawn(p, origin + dir * 0.2f, dir * cfg.acidSpeed + Vector3.up * cfg.acidArcUp);
-
+            if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
+            // Arco suave: compensa un poco la caída para que llegue cerca del punto apuntado.
+            float dist = Vector3.Distance(origin, aim);
+            float lift = cfg.acidArcUp * Mathf.Clamp01(dist / 15f);
+            AcidProjectile.Spawn(p, origin + dir * 0.2f, dir * cfg.acidSpeed + Vector3.up * lift);
             p.Visual?.PlaySpit();
             Sfx.Play(Sfx.Acid, origin);
-            return true;
         }
 
         Vector3 AimForward()

@@ -83,7 +83,7 @@ namespace Lizards
             CameraTransform.SetPositionAndRotation(pivot + back * distance + rot * offset, rot);
 
             if (target.Input.controlled && UnityEngine.InputSystem.Mouse.current != null &&
-                UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame && !LizardHUD.MenuOpen)
+                UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame && !LizardHUD.MenuOpen && !LizardLobby.Visible)
             {
                 Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false;
             }

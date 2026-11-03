@@ -6,6 +6,12 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/Lobby.unity
+    guid: 53e0ece04109b6342aa1dd2e9510dd95
+  - enabled: 1
+    path: Assets/Lizard/Scenes/PRUEBAS.unity
+    guid: 6415c5f2f5819f446957c408bf7b18a4
+  - enabled: 1
     path: Assets/Lizard/Scenes/LizardTestZone.unity
     guid: 9b398f8dad9709944bdd88a8ac36e084
   - enabled: 1
@@ -17,6 +23,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Photon/FusionMenu/FusionSampleMenu.unity
     guid: 74c3b330900a03442806ce69f1fe5955
+  - enabled: 1
+    path: Assets/Scenes/LEVEL1.unity
+    guid: 1acb8c3936c5a764cb927f2bf27dc83c
+  - enabled: 1
+    path: Assets/Scenes/LEVEL2.unity
+    guid: b0e0e3b4197b4254c901ac0927ee58f2
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

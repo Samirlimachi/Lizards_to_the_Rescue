@@ -7,41 +7,58 @@ namespace Lizards
     /// mandíbula (lengua, comer, expulsar, ácido, voz), daño, transformación, renacuajo, rodar/chocar/frenar.
     /// Solo mueve transformaciones visuales; nunca toca la física.
     /// </summary>
-    public class LizardVisual : MonoBehaviour
+    public class LizardVisual : LizardVisualBase
     {
         [Header("Piezas (las rellena LizardModelFactory)")]
-        public Transform scalePivot, bodyPivot, rollPivot, body, belly, headPivot, jawPivot, mouthPoint, bubble, ping;
+        public Transform scalePivot, bodyPivot, rollPivot, body, belly, headPivot, jawPivot, bubble, ping;
         public Transform[] eyes, lids, legs, tail, spots;
+        public Transform[] arms = new Transform[0];
+        [Tooltip("Opcional: cuerpo con blend shape de inflado (0 = normal, 100 = esfera).")]
+        public SkinnedMeshRenderer inflateRenderer;
+        public int inflateShapeIndex;
 
-        struct Shape
+        [Header("Ajustes por modelo")]
+        [Tooltip("1 = la mandíbula baja; -1 = la tapa superior de la cabeza sube (diseño rana).")]
+        public float jawSign = 1f;
+        [Tooltip("Apertura de boca en reposo (grados).")]
+        public float jawRestAngle = 0f;
+        public float lidClosedY = 0.02f;
+        public Vector3 lidClosedScale = new Vector3(0.285f, 0.285f, 0.285f);
+        public Shape normalShape = DefaultNormal, smallShape = DefaultSmall, giantShape = DefaultGiant;
+
+        [System.Serializable]
+        public struct Shape
         {
             public Vector3 bodyScale, bellyPos, bellyScale, headPos;
-            public float rollY, headScale, legScale, tailScale;
+            public float rollY, headScale, legScale, tailScale, armScale;
+            [Tooltip("Desplazamiento de brazos (x hacia fuera, y arriba) y patas (x hacia fuera, y abajo) en esta forma.")]
+            public Vector2 armOffset, legOffset;
+            [Range(0f, 100f)] public float inflate;
         }
 
-        static readonly Shape NormalShape = new Shape
+        public static readonly Shape DefaultNormal = new Shape
         {
             bodyScale = new Vector3(0.78f, 0.7f, 0.95f), rollY = 0.42f,
             bellyPos = new Vector3(0f, 0.38f, 0.12f), bellyScale = new Vector3(0.62f, 0.55f, 0.72f),
-            headPos = new Vector3(0f, 0.62f, 0.22f), headScale = 1f, legScale = 1f, tailScale = 1f,
+            headPos = new Vector3(0f, 0.62f, 0.22f), headScale = 1f, legScale = 1f, tailScale = 1f, armScale = 1f,
         };
-        static readonly Shape SmallShape = new Shape
+        public static readonly Shape DefaultSmall = new Shape
         {
             bodyScale = new Vector3(0.62f, 0.55f, 0.7f), rollY = 0.5f,
             bellyPos = new Vector3(0f, 0.45f, 0.1f), bellyScale = new Vector3(0.48f, 0.42f, 0.5f),
-            headPos = new Vector3(0f, 0.68f, 0.18f), headScale = 1.15f, legScale = 0.0f, tailScale = 1.7f,
+            headPos = new Vector3(0f, 0.68f, 0.18f), headScale = 1.15f, legScale = 0.0f, tailScale = 1.7f, armScale = 0f,
         };
-        static readonly Shape GiantShape = new Shape
+        public static readonly Shape DefaultGiant = new Shape
         {
             bodyScale = new Vector3(1f, 1f, 1f), rollY = 0.5f,
             bellyPos = new Vector3(0f, 0.46f, 0.2f), bellyScale = new Vector3(0.85f, 0.8f, 0.7f),
-            headPos = new Vector3(0f, 0.8f, 0.3f), headScale = 0.7f, legScale = 0.5f, tailScale = 0.7f,
+            headPos = new Vector3(0f, 0.8f, 0.3f), headScale = 0.7f, legScale = 0.5f, tailScale = 0.7f, armScale = 0.8f,
         };
 
         LizardPlayer p;
         LizardLipSync lipSync;
         Shape shape;
-        Vector3[] legRest; Quaternion[] tailRest;
+        Vector3[] legRest, armRestPos, lidOpenPos, lidOpenScale; Quaternion[] tailRest, armRest;
         Renderer[] rends; Color[] baseColors; MaterialPropertyBlock mpb;
 
         float squash, squashVel, walkPhase, nextBlink, blinkT = 1f;
@@ -54,7 +71,11 @@ namespace Lizards
         {
             p = GetComponentInParent<LizardPlayer>();
             lipSync = GetComponentInParent<LizardLipSync>();
-            shape = NormalShape;
+            shape = normalShape;
+            armRest = new Quaternion[arms.Length]; armRestPos = new Vector3[arms.Length];
+            for (int i = 0; i < arms.Length; i++) { armRest[i] = arms[i].localRotation; armRestPos[i] = arms[i].localPosition; }
+            lidOpenPos = new Vector3[lids.Length]; lidOpenScale = new Vector3[lids.Length];
+            for (int i = 0; i < lids.Length; i++) { lidOpenPos[i] = lids[i].localPosition; lidOpenScale[i] = lids[i].localScale; }
             legRest = new Vector3[legs.Length];
             for (int i = 0; i < legs.Length; i++) legRest[i] = legs[i].localPosition;
             tailRest = new Quaternion[tail.Length];
@@ -66,6 +87,20 @@ namespace Lizards
                 baseColors[i] = rends[i].sharedMaterial && rends[i].sharedMaterial.HasProperty("_BaseColor") ? rends[i].sharedMaterial.GetColor("_BaseColor") : Color.white;
             mpb = new MaterialPropertyBlock();
             nextBlink = Time.time + 2f;
+        }
+
+        /// <summary>Vista previa en el editor: aplica la pose de una forma sin entrar en Play (no guarda nada).</summary>
+        public void PreviewForm(LizardForm f, float visualScale)
+        {
+            if (legRest == null) Awake();
+            shape = Target(f);
+            scalePivot.localScale = Vector3.one * visualScale;
+            belly.localScale = shape.bellyScale;
+            bubble.gameObject.SetActive(f == LizardForm.Small);
+            if (f == LizardForm.Small) { bubble.localScale = Vector3.one * 1.35f * visualScale; bubble.localPosition = Vector3.up * 0.5f * visualScale; }
+            foreach (var s in spots) s.gameObject.SetActive(f == LizardForm.Giant);
+            jawPivot.localRotation = Quaternion.Euler(jawRestAngle * jawSign, 0f, 0f);
+            ApplyShape();
         }
 
         void Start()
@@ -85,14 +120,14 @@ namespace Lizards
         }
 
         // ---- Disparadores ----
-        public void PlayGulp() => gulpT = 0f;
-        public void PlayEject() => ejectT = 0f;
-        public void PlaySpit() => spitT = 0f;
-        public void PlayHurt() => hurtT = 0f;
-        public void PlayHelp() => helpT = 0f;
-        public void PlayCrash(float speed) { crashT = 0f; crashMag = Mathf.Clamp01(speed / 12f); squash += 0.25f * crashMag; }
+        public override void PlayGulp() => gulpT = 0f;
+        public override void PlayEject() => ejectT = 0f;
+        public override void PlaySpit() => spitT = 0f;
+        public override void PlayHurt() => hurtT = 0f;
+        public override void PlayHelp() => helpT = 0f;
+        public override void PlayCrash(float speed) { crashT = 0f; crashMag = Mathf.Clamp01(speed / 12f); squash += 0.25f * crashMag; }
 
-        public void OnFormChanged(LizardForm prev, LizardForm now, bool animate)
+        public override void OnFormChanged(LizardForm prev, LizardForm now, bool animate)
         {
             if (animate) popT = 0f;
             bubble.gameObject.SetActive(now == LizardForm.Small);
@@ -100,7 +135,7 @@ namespace Lizards
             if (!animate) { shape = Target(now); scaleNow = p.Config.Get(now).visualScale; ApplyShape(); }
         }
 
-        static Shape Target(LizardForm f) => f == LizardForm.Small ? SmallShape : f == LizardForm.Giant ? GiantShape : NormalShape;
+        Shape Target(LizardForm f) => f == LizardForm.Small ? smallShape : f == LizardForm.Giant ? giantShape : normalShape;
 
         void LateUpdate()
         {
@@ -126,6 +161,10 @@ namespace Lizards
             shape.headScale = Mathf.Lerp(shape.headScale, target.headScale, m);
             shape.legScale = Mathf.Lerp(shape.legScale, target.legScale, m);
             shape.tailScale = Mathf.Lerp(shape.tailScale, target.tailScale, m);
+            shape.armScale = Mathf.Lerp(shape.armScale, target.armScale, m);
+            shape.armOffset = Vector2.Lerp(shape.armOffset, target.armOffset, m);
+            shape.legOffset = Vector2.Lerp(shape.legOffset, target.legOffset, m);
+            shape.inflate = Mathf.Lerp(shape.inflate, target.inflate, m);
             scaleNow = Mathf.Lerp(scaleNow, stats.visualScale, 1f - Mathf.Exp(-dt * 8f));
             float pop = popT < 0.45f ? 1f + Mathf.Sin(popT / 0.45f * Mathf.PI) * 0.2f : 1f;
             scalePivot.localScale = Vector3.one * scaleNow * pop;
@@ -162,6 +201,16 @@ namespace Lizards
                 legs[i].localRotation = Quaternion.Euler(swing, 0f, 0f);
             }
 
+            // Brazos: aleteo al caminar, arriba en el aire, agitados al frenar o pedir ayuda.
+            for (int i = 0; i < arms.Length; i++)
+            {
+                float side = Mathf.Sign(armRestPos[i].x == 0f ? 1f : armRestPos[i].x);
+                float flap = Mathf.Sin(walkPhase * 2f + (side > 0 ? 0f : Mathf.PI)) * 18f * moveAmt;
+                if (!p.Motor.Grounded) flap = Mathf.Clamp(p.Body.linearVelocity.y * -4f, -20f, 40f) + Mathf.Sin(t * 20f) * 6f;
+                if (helpT < 1f || (p.Form == LizardForm.Giant && p.Motor.IsBraking)) flap = 30f + Mathf.Sin(t * 25f + i) * 25f;
+                arms[i].localRotation = armRest[i] * Quaternion.Euler(0f, 0f, side * flap);
+            }
+
             // Rodar (solo cuerpo y manchas; cabeza y ojos quedan reconocibles arriba).
             if (p.Form == LizardForm.Giant)
             {
@@ -185,7 +234,7 @@ namespace Lizards
             if (helpT < 1f) jawTarget = Mathf.Max(jawTarget, Mathf.Abs(Mathf.Sin(helpT * 12f)) * 25f);
             if (lipSync) jawTarget = Mathf.Max(jawTarget, lipSync.Openness * cfg.maxJawAngle);
             jaw = Mathf.Lerp(jaw, jawTarget, 1f - Mathf.Exp(-dt * 25f));
-            jawPivot.localRotation = Quaternion.Euler(jaw, 0f, 0f);
+            jawPivot.localRotation = Quaternion.Euler((jaw + jawRestAngle) * jawSign, 0f, 0f);
 
             // Cabeza: retroceso al escupir, avance al expulsar, temblor al pedir ayuda.
             float headPitch = 0f;
@@ -200,10 +249,11 @@ namespace Lizards
             blinkT += dt;
             float lid = blinkT < 0.15f ? Mathf.Sin(blinkT / 0.15f * Mathf.PI) : 0f;
             if (hurtT < 0.5f) lid = Mathf.Max(lid, 0.7f);
-            foreach (var l in lids)
+            for (int i = 0; i < lids.Length; i++)
             {
-                l.localPosition = new Vector3(0f, Mathf.Lerp(0.09f, 0.02f, lid), -0.005f);
-                l.localScale = new Vector3(0.285f, Mathf.Lerp(0.12f, 0.285f, lid), 0.285f);
+                var op = lidOpenPos[i];
+                lids[i].localPosition = new Vector3(op.x, Mathf.Lerp(op.y, lidClosedY, lid), op.z);
+                lids[i].localScale = Vector3.Lerp(lidOpenScale[i], lidClosedScale, lid);
             }
 
             // Cola: sigue el giro con retraso y se agita (mucho más en renacuajo).
@@ -255,6 +305,7 @@ namespace Lizards
         void ApplyShape()
         {
             body.localScale = shape.bodyScale;
+            if (inflateRenderer) inflateRenderer.SetBlendShapeWeight(inflateShapeIndex, shape.inflate);
             rollPivot.localPosition = new Vector3(0f, shape.rollY, 0f);
             belly.localPosition = shape.bellyPos;
             headPivot.localPosition = shape.headPos;
@@ -266,8 +317,16 @@ namespace Lizards
                 Vector3 rest = legRest[i];
                 // Patas del gigante: bajan al contorno de la esfera.
                 legs[i].localPosition = Vector3.Lerp(rest, new Vector3(rest.x * 1.3f, rest.y * shape.legScale, rest.z * 1.2f), 1f - shape.legScale);
+                legs[i].localPosition += new Vector3(Mathf.Sign(rest.x) * shape.legOffset.x, -shape.legOffset.y, 0f);
             }
-            if (tail.Length > 0) tail[0].localScale = Vector3.one * shape.tailScale;
+            if (tail.Length > 0) { tail[0].localScale = Vector3.one * shape.tailScale; tail[0].gameObject.SetActive(shape.tailScale > 0.05f); }
+            for (int i = 0; i < arms.Length; i++)
+            {
+                arms[i].localScale = Vector3.one * shape.armScale;
+                arms[i].gameObject.SetActive(shape.armScale > 0.05f);
+                float sx = Mathf.Sign(armRestPos[i].x == 0f ? 1f : armRestPos[i].x);
+                arms[i].localPosition = armRestPos[i] + new Vector3(sx * shape.armOffset.x, shape.armOffset.y, 0f);
+            }
         }
     }
 }

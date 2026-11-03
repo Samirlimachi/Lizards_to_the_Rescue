@@ -6,6 +6,7 @@ namespace Lizards
     /// <summary>Interfaz provisional (IMGUI): reservas, estado, objetivo de lengua, indicaciones y menú de controles.</summary>
     public class LizardHUD : MonoBehaviour
     {
+        Vector2 reticle; float reticleSize = 20f;
         public LizardCameraRig rig;
         public static bool MenuOpen { get; private set; }
         public bool showDebug = true;
@@ -75,15 +76,28 @@ namespace Lizards
             // ---- Mira y objetivo de lengua ----
             var t = p.Tongue;
             Vector2 c = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            Color cross = !p.Stats.tongueEnabled ? Color.gray : t.AimValid ? new Color(0.3f, 1f, 0.4f) : t.AimHasHit && t.AimLabel.Length > 0 ? new Color(1f, 0.6f, 0.1f) : Color.white;
-            GUI.color = cross;
-            GUI.DrawTexture(new Rect(c.x - 9, c.y - 1, 18, 3), white);
-            GUI.DrawTexture(new Rect(c.x - 1, c.y - 9, 3, 18), white);
+            // Mira: anillo con punto que se posa sobre lo que apuntas (sigue el punto con suavidad) y se hace más grande si se puede agarrar.
+            Color cross = !p.Stats.tongueEnabled ? Color.gray : t.AimValid ? new Color(1f, 0.45f, 0.85f) : t.AimHasHit && t.AimLabel.Length > 0 ? new Color(1f, 0.6f, 0.1f) : Color.white;
+            var camT = p.CameraRig ? p.CameraRig.CameraTransform : (Camera.main ? Camera.main.transform : null);
+            var cam = camT ? camT.GetComponent<Camera>() : null;
+            Vector2 goal = c;
+            if (cam && t.AimHasHit) { Vector3 sp = cam.WorldToScreenPoint(t.AimPoint); if (sp.z > 0f) goal = new Vector2(sp.x, Screen.height - sp.y); }
+            reticle = reticle == Vector2.zero ? goal : Vector2.Lerp(reticle, goal, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 18f));
+            reticleSize = Mathf.Lerp(reticleSize, t.AimValid ? 30f : 20f, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 12f));
+            float rs = reticleSize;
+            GUI.DrawTexture(new Rect(reticle.x - rs / 2 + 1, reticle.y - rs / 2 + 1, rs, rs), white, ScaleMode.StretchToFill, true, 0, new Color(0f, 0f, 0f, 0.35f), 3f, rs / 2);
+            GUI.DrawTexture(new Rect(reticle.x - rs / 2, reticle.y - rs / 2, rs, rs), white, ScaleMode.StretchToFill, true, 0, cross, 3f, rs / 2);
+            GUI.DrawTexture(new Rect(reticle.x - 3, reticle.y - 3, 6, 6), white, ScaleMode.StretchToFill, true, 0, cross, 0, 3f);
             GUI.color = Color.white;
             string tl = t.State == TongueState.Attached ? $"{t.AttachedLabel}  ·  largo {t.CurrentLength:0.0} m  ·  tensión {t.Tension01 * 100f:0}%"
                 : t.AimLabel.Length > 0 ? $"{t.AimLabel}  ·  {t.AimDistance:0.0}/{p.Stats.tongueRange:0} m" : $"Alcance de la lengua: {p.Stats.tongueRange:0} m";
+            if (t.HeldPartner)
+                tl += t.CatapultReady ? $"\n¡CATAPULTA LISTA! [{p.Input.Display(p.Input.Launch)}] lanzar ({t.CatapultCharge * 100f:0}%)"
+                                      : $"\nAléjate para tensar la catapulta ({t.CatapultCharge * 100f:0}%)";
+            foreach (var o in LizardPlayer.All)
+                if (o != p && o.Tongue && o.Tongue.HeldPartner == p) { tl += $"\n{o.displayName} te sujeta · [{p.Input.Display(p.Input.Jump)}] soltarte"; break; }
             var tsz = label.CalcSize(new GUIContent(tl));
-            GUI.Label(new Rect(c.x - tsz.x / 2, c.y + 18, tsz.x + 10, 24), tl, label);
+            GUI.Label(new Rect(reticle.x - tsz.x / 2, reticle.y + 22, tsz.x + 10, tsz.y + 6), tl, label);
 
             // ---- Indicaciones contextuales ----
             var input = p.Input;

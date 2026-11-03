@@ -165,7 +165,7 @@ namespace Lizards.EditorTools
             Box("Plataforma 2 (salta el hueco)", new Vector3(-4f, 1.4f, 27.5f), new Vector3(3f, 0.4f, 2.5f), plat);
 
             // ---- 2. Lengua ----
-            Sign("2. LENGUA\nApunta a los puntos amarillos y MANTÉN clic izq.\nR/F o rueda: acortar/alargar · suelta para salir disparado", new Vector3(0f, 4f, 30.5f));
+            Sign("2. LENGUA\nApunta a los puntos amarillos y MANTÉN clic izq.\nR/T o rueda: acortar/alargar · suelta para salir disparado", new Vector3(0f, 4f, 30.5f));
             Checkpoint(new Vector3(0f, 0f, 29f));
             for (int i = 0; i < 3; i++)
             {

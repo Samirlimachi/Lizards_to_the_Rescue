@@ -29,7 +29,7 @@ namespace Lizards
         public LizardHealth Health { get; private set; }
         public LizardTongue Tongue { get; private set; }
         public LizardAcid Acid { get; private set; }
-        public LizardVisual Visual { get; private set; }
+        public LizardVisualBase Visual { get; private set; }
         public LizardInput Input { get; private set; }
         public LizardCameraRig CameraRig { get; set; }
 
@@ -65,7 +65,7 @@ namespace Lizards
             Health = GetComponent<LizardHealth>();
             Tongue = GetComponent<LizardTongue>();
             Acid = GetComponent<LizardAcid>();
-            Visual = GetComponentInChildren<LizardVisual>();
+            Visual = GetComponentInChildren<LizardVisualBase>();
             Input = GetComponent<LizardInput>();
             respawnPoint = transform.position;
         }
@@ -84,6 +84,9 @@ namespace Lizards
         {
             if (transform.position.y < Config.killY) Respawn();
 
+            // Mientras está abierta la pantalla de sala no se controla al personaje (se está escribiendo).
+            if (IsControlled && LizardLobby.Visible) { Motor.MoveInput = Vector3.zero; return; }
+
             if (!IsControlled)
             {
                 Motor.MoveInput = Vector3.zero;
@@ -101,8 +104,14 @@ namespace Lizards
             Vector3 fwd = cam ? Vector3.ProjectOnPlane(cam.forward, Vector3.up).normalized : Vector3.forward;
             Vector3 right = cam ? Vector3.ProjectOnPlane(cam.right, Vector3.up).normalized : Vector3.right;
             Motor.MoveInput = Vector3.ClampMagnitude(fwd * mv.y + right * mv.x, 1f);
+            Motor.Sprinting = Input.Held(Input.Sprint);
 
-            if (Input.Pressed(Input.Jump)) Motor.RequestJump();
+            // Si otro te sujeta con la lengua, saltar te libera (y saltas).
+            if (Input.Pressed(Input.Jump))
+            {
+                foreach (var other in All) if (other != this && other.Tongue && other.Tongue.HeldPartner == this) { other.Tongue.Release(false); Message("Te has soltado"); }
+                Motor.RequestJump();
+            }
 
             // Lengua: mantener para seguir enganchado (o pulsar de nuevo si está desactivado).
             if (Input.Pressed(Input.Tongue))
@@ -113,11 +122,13 @@ namespace Lizards
             if (Config.tongueHoldToStay && Input.Released(Input.Tongue) && Tongue.State != TongueState.Idle && Tongue.State != TongueState.Retracting)
                 Tongue.Release(true);
             Tongue.ReelInput = Input.ReelValue;
+            if (Input.Pressed(Input.Launch)) Tongue.TryCatapult();
 
             if (Input.Pressed(Input.Acid)) Acid.TryFire();
             if (Input.Pressed(Input.Interact)) EatOrInteract();
             if (Input.Pressed(Input.Eject)) EjectOrFeed();
             if (Input.Pressed(Input.Help)) CallHelp();
+            if (Input.Pressed(Input.Slide)) Motor.TryStartSlide();
         }
 
         // ---------------- Comida ----------------
@@ -160,8 +171,7 @@ namespace Lizards
             if (Stomach.Food >= Config.maxFood - 0.001f) { Message("¡Estás lleno!"); return false; }
             if (!f.FitsMouth(Stats.mouthCapacity)) { Message("Demasiado grande para tragar"); return false; }
             if (Tongue.HeldFood == f) Tongue.Release(false);
-            if (!f.TryConsume(this, out float value)) return false;
-            Stomach.Add(value, "comida");
+            if (!Stomach.TryConsumeFood(f)) return false;
             Visual?.PlayGulp();
             Sfx.Play(Sfx.Eat, MouthPosition);
             EvaluateForm();
@@ -186,6 +196,13 @@ namespace Lizards
             if (MouthBusy) return;
             var partner = FindSmallPartner();
             var held = Tongue.HeldFood;
+            if (Tongue.CarriedInMouth && !(partner && held && held.FitsMouth(partner.Stats.mouthCapacity)))
+            {
+                Tongue.Release(true);
+                Visual?.PlayEject();
+                Message("Has soltado la comida");
+                return;
+            }
 
             if (partner && held && held.FitsMouth(partner.Stats.mouthCapacity))
             {
@@ -195,8 +212,8 @@ namespace Lizards
             }
             if (partner && Stomach.Food > 0.001f)
             {
-                float amount = Stomach.Remove(Config.feedAmount, "alimentar");
-                partner.ReceiveFood(amount, this);
+                float amount = Stomach.TransferTo(partner.Stomach, Config.feedAmount);
+                partner.ReceiveFood(amount, this, true);
                 Fx.Burst(Vector3.Lerp(MouthPosition, partner.CenterPosition, 0.5f), new Color(0.8f, 0.95f, 0.4f), 10, 2f, 0.12f);
                 Visual?.PlayEject();
                 SetMouthBusy(0.3f);
@@ -207,7 +224,7 @@ namespace Lizards
             if (Stomach.Food > 0.001f)
             {
                 Vector3 dir = (transform.forward + Vector3.up * 0.6f).normalized;
-                Stomach.EjectPellets(Config.voluntaryEjectAmount, dir, 4f, 0.2f);
+                Stomach.EjectLastFood(dir, 4f, 0.2f);
                 Visual?.PlayEject();
                 Sfx.Play(Sfx.Eject, MouthPosition);
                 SetMouthBusy(0.3f);
@@ -217,10 +234,10 @@ namespace Lizards
             Message("No tienes comida que expulsar");
         }
 
-        public void ReceiveFood(float amount, LizardPlayer from)
+        public void ReceiveFood(float amount, LizardPlayer from, bool alreadyStored = false)
         {
             if (amount <= 0f) return;
-            Stomach.Add(amount, from ? "alimentado por " + from.displayName : "alimentado");
+            if (!alreadyStored) Stomach.Add(amount, from ? "alimentado por " + from.displayName : "alimentado");
             Visual?.PlayGulp();
             Sfx.Play(Sfx.Eat, MouthPosition);
             Message(from ? $"{from.displayName} te ha alimentado" : "Te han alimentado");
@@ -278,6 +295,12 @@ namespace Lizards
 
         public void Message(string text)
         {
+            // Sin repeticiones: si es el mismo mensaje que el último y sigue en pantalla, solo se refresca.
+            if (Messages.Count > 0 && Messages[Messages.Count - 1].text == text && Time.time - Messages[Messages.Count - 1].time < 4f)
+            {
+                Messages[Messages.Count - 1] = (text, Time.time);
+                return;
+            }
             Messages.Add((text, Time.time));
             if (Messages.Count > 5) Messages.RemoveAt(0);
         }

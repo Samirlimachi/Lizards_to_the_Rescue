@@ -16,7 +16,7 @@ namespace Lizards
         public bool controlled = true;
 
         public InputActionAsset Asset { get; private set; }
-        public InputAction Move, Look, LookStick, Jump, Tongue, Reel, ReelScroll, Interact, Eject, Acid, Help;
+        public InputAction Move, Look, LookStick, Jump, Tongue, Reel, ReelScroll, Launch, Sprint, Interact, Eject, Acid, Help, Slide;
         public IReadOnlyList<InputAction> Rebindable { get; private set; }
 
         InputActionRebindingExtensions.RebindingOperation rebindOp;
@@ -53,9 +53,15 @@ namespace Lizards
             Tongue.AddBinding("<Gamepad>/rightTrigger");
 
             Reel = map.AddAction("Acortar/Alargar lengua", InputActionType.Value);
-            Reel.AddCompositeBinding("1DAxis").With("Negative", "<Keyboard>/r").With("Positive", "<Keyboard>/f");
+            Reel.AddCompositeBinding("1DAxis").With("Negative", "<Keyboard>/r").With("Positive", "<Keyboard>/t");
             Reel.AddCompositeBinding("1DAxis").With("Negative", "<Gamepad>/rightShoulder").With("Positive", "<Gamepad>/leftShoulder");
             ReelScroll = map.AddAction("Rueda lengua", InputActionType.Value, "<Mouse>/scroll/y");
+
+            Sprint = map.AddAction("Correr", InputActionType.Button, "<Keyboard>/leftShift");
+            Sprint.AddBinding("<Gamepad>/leftStickPress");
+
+            Launch = map.AddAction("Lanzar compañero", InputActionType.Button, "<Keyboard>/q");
+            Launch.AddBinding("<Gamepad>/dpad/down");
 
             Interact = map.AddAction("Comer/Interactuar", InputActionType.Button, "<Keyboard>/e");
             Interact.AddBinding("<Gamepad>/buttonWest");
@@ -69,7 +75,11 @@ namespace Lizards
             Help = map.AddAction("Pedir ayuda", InputActionType.Button, "<Keyboard>/h");
             Help.AddBinding("<Gamepad>/dpad/up");
 
-            Rebindable = new[] { Move, Jump, Tongue, Reel, Interact, Eject, Acid, Help };
+            Slide = map.AddAction("Deslizarse", InputActionType.Button, "<Keyboard>/c");
+            Slide.AddBinding("<Keyboard>/leftCtrl");
+            Slide.AddBinding("<Gamepad>/buttonEast");
+
+            Rebindable = new[] { Move, Jump, Tongue, Reel, Launch, Sprint, Interact, Eject, Acid, Help, Slide };
         }
 
         // ---- Lectura (neutra si no hay control) ----

@@ -2,6 +2,8 @@ using UnityEngine;
 
 namespace Lizards
 {
+    public enum LizardModelStyle { Lagarto, Rana }
+
     /// <summary>Ensambla un lagarto completo (física + sistemas + modelo). Lo usan el generador de escena y la autoprueba.</summary>
     public static class LizardFactory
     {
@@ -22,7 +24,7 @@ namespace Lizards
             }
         }
 
-        public static LizardPlayer Create(string name, Vector3 position, LizardConfig config, LizardModelMaterials mats, PhysicsMaterial physicsMat = null, bool controlled = true)
+        public static LizardPlayer Create(string name, Vector3 position, LizardConfig config, LizardModelMaterials mats, PhysicsMaterial physicsMat = null, bool controlled = true, LizardModelStyle style = LizardModelStyle.Lagarto, System.Func<Transform, LizardVisualBase> buildModel = null)
         {
             var go = new GameObject(name);
             go.SetActive(false); // los Awake se ejecutan cuando todo está montado
@@ -54,7 +56,9 @@ namespace Lizards
             p.config = config;
             p.displayName = name;
 
-            LizardModelFactory.Build(go.transform, mats ?? LizardModelMaterials.CreateRuntime());
+            if (buildModel != null) buildModel(go.transform);
+            else if (style == LizardModelStyle.Rana) RanaModelFactory.Build(go.transform, mats ?? RanaModelFactory.CreateRuntimeMaterials());
+            else LizardModelFactory.Build(go.transform, mats ?? LizardModelMaterials.CreateRuntime());
             go.SetActive(true);
             return p;
         }

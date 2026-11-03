@@ -11,13 +11,31 @@ namespace Lizards
         Rigidbody rb;
 
         public Vector3 MoveInput { get; set; }
+        /// <summary>Corriendo (Shift). Sin correr camina a <see cref="walkFactor"/> de la velocidad.</summary>
+        public bool Sprinting { get; set; }
+        [Range(0.2f, 1f)] public float walkFactor = 0.5f;
         public bool Grounded { get; private set; }
+        /// <summary>Flotando o nadando en una <see cref="SwimZone"/>.</summary>
+        public bool Swimming { get; private set; }
+        public SwimZone SwimZoneNow { get; private set; }
         public Vector3 GroundNormal { get; private set; } = Vector3.up;
         public Vector3 LastVelocity { get; private set; }
         public bool Stunned => Time.time < stunUntil;
         public bool IsTugged => Time.time < tuggedUntil;
         public float PlanarSpeed => Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up).magnitude;
         public bool IsBraking { get; private set; }
+        public bool Sliding => Time.time < slideUntil;
+        public event Action OnSlideStart;
+        float slideUntil = -10f, nextSlide;
+        Vector3 facePoint; float faceUntil;
+
+        /// <summary>Gira rápido hacia un punto durante un tiempo (p. ej. al lanzar la lengua).</summary>
+        public void FaceTowards(Vector3 worldPoint, float seconds)
+        {
+            facePoint = worldPoint;
+            faceUntil = Mathf.Max(faceUntil, Time.time + seconds);
+        }
+        public bool IsFacingOverride => Time.time < faceUntil;
 
         public event Action<float> OnLanded;
         public event Action OnJumped;
@@ -35,6 +53,26 @@ namespace Lizards
         }
 
         public void RequestJump() => lastJumpRequest = Time.time;
+
+        /// <summary>Se lanza de panza en la dirección de la carrera. Solo en forma normal y yendo rápido.</summary>
+        public bool TryStartSlide()
+        {
+            var cfg = p.Config;
+            if (Sliding || Time.time < nextSlide || Stunned || p.Form != LizardForm.Normal) return false;
+            Vector3 planar = Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up);
+            Vector3 dir = planar.sqrMagnitude > 0.01f ? planar.normalized : MoveInput.sqrMagnitude > 0.01f ? MoveInput.normalized : transform.forward;
+            if (planar.magnitude < cfg.slideMinSpeed && MoveInput.sqrMagnitude < 0.25f) return false;
+            float speed = Mathf.Max(planar.magnitude, cfg.slideSpeed);
+            Vector3 v = dir * speed;
+            v.y = Grounded ? cfg.slideHop : Mathf.Min(rb.linearVelocity.y, 0f);
+            rb.linearVelocity = v;
+            if (Grounded) jumpLockUntil = Time.time + 0.1f;
+            slideUntil = Time.time + cfg.slideDuration;
+            nextSlide = slideUntil + cfg.slideCooldown;
+            rb.MoveRotation(Quaternion.LookRotation(dir, Vector3.up));
+            OnSlideStart?.Invoke();
+            return true;
+        }
         public void Stun(float t) => stunUntil = Mathf.Max(stunUntil, Time.time + t);
         /// <summary>Lo llama la lengua de otro jugador: reduce nuestro control en suelo para que el tirón funcione.</summary>
         public void MarkTugged(float t = 0.15f) => tuggedUntil = Mathf.Max(tuggedUntil, Time.time + t);
@@ -54,6 +92,14 @@ namespace Lizards
             CheckGround(s, cfg);
             if (Grounded && !wasGrounded) OnLanded?.Invoke(-prevVerticalSpeed);
 
+            // En el agua: flota con la cabeza fuera; se puede saltar para salir (no cuenta si va subiendo de un salto).
+            bool wasSwimming = Swimming;
+            Swimming = SwimZone.Find(transform.position, out float surface, out var zone) && rb.linearVelocity.y < 2.5f
+                       && !(Grounded && transform.position.y > surface - 0.25f);
+            SwimZoneNow = Swimming ? zone : null;
+            if (Swimming) lastGroundedTime = Time.time;
+            if (Swimming && !wasSwimming) Fx.Burst(transform.position + Vector3.up * 0.4f, new Color(0.85f, 1f, 0.9f), 14, 3f, 0.1f);
+
             // Salto con coyote time y buffer.
             bool canCoyote = Time.time - lastGroundedTime <= cfg.coyoteTime;
             if (Time.time - lastJumpRequest <= cfg.jumpBufferTime && canCoyote && Time.time >= jumpLockUntil && !Stunned && s.jumpVelocity > 0f)
@@ -69,9 +115,45 @@ namespace Lizards
             }
 
             Vector3 v = rb.linearVelocity;
-            Vector3 desired = MoveInput * s.moveSpeed;
+            Vector3 desired = MoveInput * s.moveSpeed * (Sprinting || p.Form == LizardForm.Giant ? 1f : walkFactor);
             float control = Stunned ? 0.1f : IsTugged ? 0.15f : 1f;
             bool tongueAnchored = p.Tongue && p.Tongue.IsSwinging;
+
+            // Nadando: empuje de flotación (con un leve vaivén), sin gravedad y más lento que en tierra.
+            if (Swimming && !tongueAnchored && Time.time >= jumpLockUntil) // recién saltado: deja salir del agua
+            {
+                IsBraking = false;
+                float scaleK = Mathf.Max(0.5f, s.visualScale);
+                float targetY = surface - Mathf.Lerp(0.5f, 0.22f, Mathf.Clamp01(Vector3.ProjectOnPlane(v, Vector3.up).magnitude / 2f)) * scaleK + Mathf.Sin(Time.time * 2.2f) * 0.04f;
+                float ay = (targetY - transform.position.y) * 22f - v.y * 5f;
+                rb.AddForce(-Physics.gravity + Vector3.up * ay, ForceMode.Acceleration);
+                Vector3 hs = new Vector3(v.x, 0f, v.z);
+                Vector3 want = new Vector3(desired.x, 0f, desired.z) * 0.55f;
+                hs = Vector3.MoveTowards(hs, want, (want.sqrMagnitude > 0.01f ? s.groundAccel * 0.45f : s.groundDecel * 0.25f) * dt);
+                rb.linearVelocity = hs + Vector3.up * rb.linearVelocity.y;
+                if (MoveInput.sqrMagnitude > 0.01f)
+                    rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, Quaternion.LookRotation(MoveInput.normalized, Vector3.up), s.turnSpeed * 0.6f * dt));
+                prevVerticalSpeed = rb.linearVelocity.y;
+                LastVelocity = rb.linearVelocity;
+                return;
+            }
+
+            // Deslizándose: conserva el impulso, frena poco y solo se puede girar un poco.
+            if (Sliding && !tongueAnchored)
+            {
+                Vector3 planarS = Vector3.ProjectOnPlane(v, Vector3.up);
+                if (MoveInput.sqrMagnitude > 0.01f && planarS.sqrMagnitude > 0.01f)
+                    planarS = Vector3.RotateTowards(planarS, MoveInput.normalized * planarS.magnitude, cfg.slideSteer * Mathf.Deg2Rad * dt, 0f);
+                if (Grounded) planarS = Vector3.MoveTowards(planarS, Vector3.zero, cfg.slideDecel * dt);
+                rb.linearVelocity = planarS + Vector3.up * v.y;
+                if (!Grounded && v.y < 0f) rb.AddForce(Physics.gravity * (cfg.fallGravityMultiplier - 1f), ForceMode.Acceleration);
+                if (Grounded && planarS.magnitude < 1.5f) slideUntil = Time.time;
+                if (planarS.sqrMagnitude > 0.04f)
+                    rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, Quaternion.LookRotation(planarS.normalized, Vector3.up), 400f * dt));
+                prevVerticalSpeed = rb.linearVelocity.y;
+                LastVelocity = rb.linearVelocity;
+                return;
+            }
 
             if (Grounded && !tongueAnchored)
             {
@@ -116,10 +198,16 @@ namespace Lizards
             Vector3 face = p.Form == LizardForm.Giant ? Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up) : MoveInput;
             if (p.Tongue && p.Tongue.State == TongueState.Attached && !p.Tongue.IsSwinging && MoveInput.sqrMagnitude < 0.01f)
                 face = Vector3.ProjectOnPlane(p.Tongue.AttachPoint - transform.position, Vector3.up);
+            float turn = s.turnSpeed;
+            if (IsFacingOverride && p.Form != LizardForm.Giant)
+            {
+                Vector3 toTarget = Vector3.ProjectOnPlane(facePoint - transform.position, Vector3.up);
+                if (toTarget.sqrMagnitude > 0.04f) { face = toTarget; turn = Mathf.Max(turn, 1440f); }
+            }
             if (face.sqrMagnitude > 0.04f)
             {
                 Quaternion want = Quaternion.LookRotation(face.normalized, Vector3.up);
-                rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, want, s.turnSpeed * dt));
+                rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, want, turn * dt));
             }
 
             prevVerticalSpeed = rb.linearVelocity.y;

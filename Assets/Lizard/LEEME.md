@@ -21,6 +21,7 @@
 | Expulsar comida / alimentar | G | Y / Triángulo |
 | Escupir ácido | Clic derecho | LT |
 | Pedir ayuda | H | Cruceta arriba |
+| Deslizarse de panza (corriendo) | C o Ctrl izquierdo | B / Círculo |
 
 Teclas de depuración (fijas):
 - **F1, F2, F3**: forma normal, renacuajo o gigante.
@@ -35,7 +36,7 @@ Teclas de depuración (fijas):
 
 ## Cómo probar cada habilidad (zonas de la escena, avanzando en +Z)
 1. **Movimiento**: escalones, una rampa de 25° (se sube), una de 60° (no se sube) y plataformas con hueco.
-2. **Lengua**: puntos amarillos sobre el foso para balancearse y una pared morada adhesiva. Mantén el clic, acorta o alarga con R/F y suelta para salir con impulso.
+2. **Lengua**: puntos amarillos sobre el foso para balancearse y una pared morada adhesiva. Mantén el clic, acorta o alarga con R/T y suelta para salir con impulso. Con un compañero sujeto, aléjate para tensar y pulsa Q para catapultarlo; el sujetado se suelta con Espacio.
 3. **Arrastre**:
    - Las cajas ligeras vienen hacia ti.
    - La caja mediana se arrastra.

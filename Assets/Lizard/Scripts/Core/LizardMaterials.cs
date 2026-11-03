@@ -28,6 +28,33 @@ namespace Lizards
             return m;
         }
 
+        static Shader toon;
+
+        /// <summary>
+        /// Material cartoon para objetos y escenario: SIN contorno negro y con sombreado suave (estilo 3D cartoon).
+        /// El parámetro de contorno se ignora a propósito: solo los jugadores llevan contorno (ver ToonCharacter).
+        /// </summary>
+        public static Material Toon(Color c, float outlineWidth = 0f, float spec = 0.25f, Color? shadowTint = null)
+        {
+            var m = ToonCharacter(c, 0f, spec * 0.6f, shadowTint ?? new Color(0.7f, 0.68f, 0.9f));
+            if (m.HasProperty("_ShadowSoftness")) m.SetFloat("_ShadowSoftness", 0.28f);
+            if (m.HasProperty("_RimColor")) m.SetColor("_RimColor", new Color(1f, 1f, 1f, 0.1f));
+            return m;
+        }
+
+        /// <summary>Material cartoon con contorno negro: solo para los personajes jugables.</summary>
+        public static Material ToonCharacter(Color c, float outlineWidth = 0.0035f, float spec = 0.25f, Color? shadowTint = null)
+        {
+            if (!toon) toon = Shader.Find("Lizards/Toon");
+            if (!toon) return Lit(c, 0.3f);
+            var m = new Material(toon);
+            m.SetColor("_BaseColor", c);
+            m.SetFloat("_OutlineWidth", outlineWidth);
+            m.SetFloat("_SpecSize", spec);
+            m.SetColor("_ShadowColor", shadowTint ?? new Color(0.62f, 0.66f, 0.85f));
+            return m;
+        }
+
         public static Material Transparent(Color c, float smoothness = 0.9f)
         {
             var m = Lit(c, smoothness);

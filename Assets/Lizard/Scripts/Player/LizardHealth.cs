@@ -55,7 +55,7 @@ namespace Lizards
             else if (p.Stomach.Food > 0.001f)
             {
                 float loss = info.foodLoss >= 0f ? info.foodLoss : cfg.damageEjectAmount;
-                p.Stomach.EjectPellets(loss, (dir.normalized + Vector3.up * 1.2f).normalized, 5f, 0.6f);
+                p.Stomach.EjectFoods(loss, (dir.normalized + Vector3.up * 1.2f).normalized, 5f, 0.6f);
                 if (p.Stomach.Food <= 0.001f) p.Message("¡Estás vacío! Otro golpe te convertirá en renacuajo");
                 p.EvaluateForm();
             }

@@ -88,6 +88,17 @@ namespace Lizards
         public float maxFallSpeed = 30f;
         public float killY = -15f;
 
+        [Header("Deslizarse de panza")]
+        public float slideSpeed = 9f;
+        [Tooltip("Velocidad mínima corriendo para poder deslizarse.")]
+        public float slideMinSpeed = 3f;
+        public float slideDuration = 0.9f;
+        public float slideDecel = 4f;
+        [Tooltip("Grados por segundo que puedes girar mientras te deslizas.")]
+        public float slideSteer = 110f;
+        public float slideCooldown = 0.5f;
+        public float slideHop = 2.5f;
+
         [Header("Golpes y recuperación")]
         public float knockbackForce = 6f;
         public float knockbackUp = 4f;
@@ -136,10 +147,18 @@ namespace Lizards
         public float tongueReleaseBoost = 1.1f;
         public float tongueMaxReleaseSpeed = 18f;
         public float tongueMaxBodySpeed = 25f;
-        public float partnerLaunchForward = 9f;
-        public float partnerLaunchUp = 7f;
-        public float partnerLaunchMaxDistance = 2.5f;
         public bool tongueHoldToStay = true;
+        [Tooltip("Segundos que la lengua aguanta estirada por encima del límite antes de soltarse (sin daño).")]
+        public float tongueOverstretchTime = 0.8f;
+        [Tooltip("Tensión (0-1) a partir de la cual se nota el tirón con sonido y color.")]
+        public float tongueTensionFeedback = 0.35f;
+        [Header("Catapulta elástica (Q)")]
+        [Tooltip("Carga mínima (tensión acumulada 0-1) para que el lanzamiento salga.")]
+        public float catapultMinCharge = 0.3f;
+        public float catapultMaxSpeed = 16f;
+        public float catapultUpRatio = 0.45f;
+        [Tooltip("Velocidad con que la carga sube al tensar y baja al aflojar.")]
+        public float catapultChargeRate = 1.5f;
 
         [Header("Ácido")]
         public float maxAcid = 3f;

@@ -2296,6 +2296,26 @@ MonoBehaviour:
     m_SingletonActionBindings: []
     m_Flags: 0
     m_Priority: 0
+  Launch:
+    m_Name: 
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: af57fdb3-389b-466b-9f3e-1489297fd9db
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings: []
+    m_Flags: 0
+    m_Priority: 0
+  Sprint:
+    m_Name: 
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: 2425d2c1-af6a-4fcd-8f4a-02f33af99688
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings: []
+    m_Flags: 0
+    m_Priority: 0
   Interact:
     m_Name: 
     m_Type: 0
@@ -2336,6 +2356,16 @@ MonoBehaviour:
     m_SingletonActionBindings: []
     m_Flags: 0
     m_Priority: 0
+  Slide:
+    m_Name: 
+    m_Type: 0
+    m_ExpectedControlType: 
+    m_Id: a4f810ef-eee0-4caa-ab52-db6e97c22af9
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings: []
+    m_Flags: 0
+    m_Priority: 0
 --- !u!114 &8318219679865638817
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2348,6 +2378,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e89f4539a4d566e43b13684eda825f46, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lizards.LizardMotor
+  walkFactor: 0.5
 --- !u!114 &5076958059504657113
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2396,6 +2427,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 45425aa33affc4d43af1c7832f30c8ee, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lizards.LizardTongue
+  tongueWidth: 0.17
 --- !u!114 &3609140943822674598
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3402,6 +3434,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f96cab296a44c9479efbc218831a200, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lizards.LizardVisual
+  mouthPoint: {fileID: 4780273141508090925}
   scalePivot: {fileID: 3918962167940270207}
   bodyPivot: {fileID: 2457114530118552873}
   rollPivot: {fileID: 5432452776357674180}
@@ -3409,7 +3442,6 @@ MonoBehaviour:
   belly: {fileID: 5388813922272270379}
   headPivot: {fileID: 9137420607260038429}
   jawPivot: {fileID: 8086263006624654313}
-  mouthPoint: {fileID: 4780273141508090925}
   bubble: {fileID: 6138652959747949834}
   ping: {fileID: 6311300831309745902}
   eyes:
@@ -3433,6 +3465,52 @@ MonoBehaviour:
   - {fileID: 752696251909708421}
   - {fileID: 8472167704747322949}
   - {fileID: 151414651507148386}
+  arms: []
+  inflateRenderer: {fileID: 0}
+  inflateShapeIndex: 0
+  jawSign: 1
+  jawRestAngle: 0
+  lidClosedY: 0.02
+  lidClosedScale: {x: 0.285, y: 0.285, z: 0.285}
+  normalShape:
+    bodyScale: {x: 0.78, y: 0.7, z: 0.95}
+    bellyPos: {x: 0, y: 0.38, z: 0.12}
+    bellyScale: {x: 0.62, y: 0.55, z: 0.72}
+    headPos: {x: 0, y: 0.62, z: 0.22}
+    rollY: 0.42
+    headScale: 1
+    legScale: 1
+    tailScale: 1
+    armScale: 1
+    armOffset: {x: 0, y: 0}
+    legOffset: {x: 0, y: 0}
+    inflate: 0
+  smallShape:
+    bodyScale: {x: 0.62, y: 0.55, z: 0.7}
+    bellyPos: {x: 0, y: 0.45, z: 0.1}
+    bellyScale: {x: 0.48, y: 0.42, z: 0.5}
+    headPos: {x: 0, y: 0.68, z: 0.18}
+    rollY: 0.5
+    headScale: 1.15
+    legScale: 0
+    tailScale: 1.7
+    armScale: 0
+    armOffset: {x: 0, y: 0}
+    legOffset: {x: 0, y: 0}
+    inflate: 0
+  giantShape:
+    bodyScale: {x: 1, y: 1, z: 1}
+    bellyPos: {x: 0, y: 0.46, z: 0.2}
+    bellyScale: {x: 0.85, y: 0.8, z: 0.7}
+    headPos: {x: 0, y: 0.8, z: 0.3}
+    rollY: 0.5
+    headScale: 0.7
+    legScale: 0.5
+    tailScale: 0.7
+    armScale: 0.8
+    armOffset: {x: 0, y: 0}
+    legOffset: {x: 0, y: 0}
+    inflate: 0
 --- !u!1 &6562304611290771263
 GameObject:
   m_ObjectHideFlags: 0
