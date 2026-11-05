@@ -170,6 +170,7 @@ namespace Lizards
                 var cfg = p.Config;
                 food.MarkEjected(p, cfg.pelletPickupDelay, cfg.pelletOwnerPickupDelay);
                 food.Body.linearVelocity = p.Body.linearVelocity * 0.5f + d * speed;
+                SharedFoodSync.AnnounceSpit(food,p);
                 count++;
             });
             return count;

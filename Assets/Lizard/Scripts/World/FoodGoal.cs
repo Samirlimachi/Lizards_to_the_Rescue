@@ -13,10 +13,13 @@ namespace Lizards
             if (f && f.TryConsume(null, out float v))
             {
                 Delivered += v;
+                var shared=f.GetComponent<SharedFoodSync>();
+                if(shared&&SharedFoodSync.Online&&SharedFoodSync.Master)SharedFoodSync.Local.RPC_FoodDelivered(shared.id,Delivered);
                 Fx.Burst(transform.position + Vector3.up, new Color(1f, 0.85f, 0.2f), 25, 4f, 0.15f);
                 Sfx.Play(Sfx.Help, transform.position);
                 foreach (var p in LizardPlayer.All) if (p.IsControlled) p.Message($"¡Entregado! Total en la meta: {Delivered:0}");
             }
         }
+        public void SynchronizeDelivery(float value){Delivered=Mathf.Max(Delivered,value);}
     }
 }

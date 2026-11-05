@@ -10,7 +10,7 @@ namespace Lizards
     /// En las copias remotas desactiva el control y la física local para que solo sigan lo que llega por red.
     /// </summary>
     [RequireComponent(typeof(NetworkObject))]
-    public class LizardNetSync : NetworkBehaviour
+    public partial class LizardNetSync : NetworkBehaviour
     {
         public static readonly List<LizardNetSync> All = new();
         /// <summary>Nombre que pondrá el jugador local al aparecer (lo rellena la pantalla de sala).</summary>
@@ -64,6 +64,7 @@ namespace Lizards
                 player.Tongue.NetLaunchPartner = (target, v) => { var ns = target.GetComponent<LizardNetSync>(); if (ns && ns.Object) ns.RPC_Launch(v); };
                 player.Tongue.NetRequestRelease = () => RPC_RequestRelease();
             }
+            if(HasStateAuthority)RPC_RequestFoodState();
         }
 
         static LizardPlayer PlayerFromId(NetworkRunner runner, NetworkId id)
@@ -139,6 +140,8 @@ namespace Lizards
                 TongueLengthNet = t.CurrentLength;
                 TongueTensionNet = t.Tension01;
                 TongueChargeNet = t.CatapultCharge;
+                var sharedFood=t.HeldFood?t.HeldFood.GetComponent<SharedFoodSync>():null;
+                TongueFoodNet=sharedFood?sharedFood.id:"";
                 var held = t.PartnerTarget ? t.PartnerTarget.GetComponent<NetworkObject>() : null;
                 TonguePartnerNet = held && t.State == TongueState.Attached ? held.Id : default;
             }

@@ -24,6 +24,10 @@ namespace Lizards
         public FoodState State { get; private set; } = FoodState.Available;
         public LizardPlayer Holder { get; private set; }
         public Rigidbody Body { get; private set; }
+        readonly HashSet<LizardPlayer> grabbers = new();
+        public int GrabberCount {get{grabbers.RemoveWhere(p=>!p);return grabbers.Count;}}
+        public bool IsHeldBy(LizardPlayer player) => player && grabbers.Contains(player);
+        public bool SharedPullAllowed => GetComponent<BreakableFood>() is BreakableFood b && b.isActiveAndEnabled && !b.Broken;
 
         float noPickupUntil, ownerNoPickupUntil;
         LizardPlayer ejectedBy;
@@ -37,37 +41,44 @@ namespace Lizards
         public bool CanBeEatenBy(LizardPlayer p)
         {
             if (!edible || State == FoodState.Consumed) return false;
-            if (State == FoodState.Grabbed && Holder != p) return false;
+            if (State == FoodState.Grabbed && (!IsHeldBy(p) || grabbers.Count > 1)) return false;
             if (Time.time < noPickupUntil) return false;
             if (p == ejectedBy && Time.time < ownerNoPickupUntil) return false;
             return true;
         }
 
         public bool CanBeGrabbedBy(LizardPlayer p) =>
-            State == FoodState.Available || (State == FoodState.Grabbed && Holder == p);
+            State != FoodState.Consumed && (State == FoodState.Available || IsHeldBy(p) || SharedPullAllowed);
 
         public bool TryGrab(LizardPlayer p)
         {
             if (!CanBeGrabbedBy(p)) return false;
-            State = FoodState.Grabbed; Holder = p;
+            if (!p) return false;
+            grabbers.Add(p);
+            State = FoodState.Grabbed; if (!Holder) Holder = p;
             return true;
         }
 
         public void ReleaseGrab(LizardPlayer p)
         {
-            if (State == FoodState.Grabbed && Holder == p) { State = FoodState.Available; Holder = null; }
+            if (!grabbers.Remove(p)) return;
+            Holder = null;
+            foreach (var other in grabbers) if (other) { Holder = other; break; }
+            State = Holder ? FoodState.Grabbed : FoodState.Available;
         }
 
         /// <summary>Consumo atómico: devuelve el valor solo la primera vez.</summary>
         public bool TryConsume(LizardPlayer eater, out float value)
         {
             value = 0f;
+            if (!eater && GetComponent<SharedFoodSync>()?.Replica == true) return false;
             if (eater && !CanBeEatenBy(eater)) return false;
             if (!eater && State == FoodState.Consumed) return false;
             value = nutrition;
             nutrition = 0f;
             State = FoodState.Consumed;
             Holder = null;
+            grabbers.Clear();
             OnConsumed?.Invoke(this, eater);
             gameObject.SetActive(false);
             Destroy(gameObject);

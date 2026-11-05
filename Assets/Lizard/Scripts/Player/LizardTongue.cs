@@ -64,7 +64,7 @@ namespace Lizards
         public bool IsSwinging => State == TongueState.Attached && mode == Mode.Anchor;
         /// <summary>Punta actual de la lengua (o el punto de enganche).</summary>
         public Vector3 TipPosition => State == TongueState.Attached ? AttachPoint : tip;
-        public FoodItem HeldFood => State == TongueState.Attached && food && food.State == FoodState.Grabbed && food.Holder == p ? food : null;
+        public FoodItem HeldFood => State == TongueState.Attached && food && food.IsHeldBy(p) ? food : null;
         public LizardPlayer HeldPartner => State == TongueState.Attached ? partner : null;
         /// <summary>Comida grande que va atrapada en la boca (no cabe para tragarla).</summary>
         public FoodItem CarriedInMouth => carrying && State == TongueState.Attached ? food : null;
@@ -227,7 +227,7 @@ namespace Lizards
             {
                 if (!f.CanBeGrabbedBy(p)) { label = "Comida (la tiene otro)"; return false; }
                 if (f.Body.mass > s.tongueMaxGrabMass) { label = "Comida demasiado pesada"; return false; }
-                label = f.FitsMouth(s.mouthCapacity) ? "Comida" : "Comida grande (arrastrar)";
+                label = f.SharedPullAllowed ? "Salteña · tira con otro jugador o golpéala" : f.FitsMouth(s.mouthCapacity) ? "Comida" : "Comida grande (arrastrar)";
                 m = Mode.Pull; return true;
             }
             var other = c.GetComponentInParent<LizardPlayer>();
@@ -411,7 +411,7 @@ namespace Lizards
 
         bool TargetAlive() =>
             targetTf && targetCol && targetCol.enabled && targetCol.gameObject.activeInHierarchy &&
-            (!food || (food.State == FoodState.Grabbed && food.Holder == p)) &&
+            (!food || (food.State == FoodState.Grabbed && food.IsHeldBy(p))) &&
             (!partner || (partner.isActiveAndEnabled && partner != p));
 
         // ---------------- Física ----------------
@@ -484,7 +484,8 @@ namespace Lizards
             Vector3 mouth = p.MouthPosition, anchor = AttachPoint;
 
             // Comida demasiado grande para tragar: al llegar a la boca se queda atrapada en ella.
-            if (mode == Mode.Pull && food && !food.FitsMouth(s.mouthCapacity))
+            if (carrying && food && (food.GrabberCount > 1 || (SharedFoodSync.Online&&food.GetComponent<SharedFoodSync>()))) StopCarry(false);
+            if (mode == Mode.Pull && food && food.GrabberCount <= 1 && !(SharedFoodSync.Online&&food.GetComponent<SharedFoodSync>()) && !food.FitsMouth(s.mouthCapacity))
             {
                 if (!carrying && length <= cfg.tongueMinLength * Mathf.Max(1f, s.visualScale * 0.6f) + 0.05f
                     && Vector3.Distance(mouth, food.transform.position) <= food.size + cfg.tongueMinLength + 0.2f)
@@ -543,7 +544,7 @@ namespace Lizards
                 Sfx.Play(Sfx.Stick, Vector3.Lerp(mouth, anchor, 0.5f), 0.15f + 0.35f * Tension01);
             }
 
-            if (stretch > 0f)
+            if (stretch > 0f && !(food&&food.GetComponent<SharedFoodSync>()?.Replica==true))
             {
                 if (mode == Mode.Anchor || !targetBody || targetBody.isKinematic)
                 {
@@ -567,13 +568,13 @@ namespace Lizards
                     tb.linearVelocity = Vector3.ClampMagnitude(tb.linearVelocity, cfg.tongueMaxBodySpeed);
                 }
             }
-            else Tension01 = 0f;
+            else if(stretch<=0f) Tension01 = 0f;
 
             rb.linearVelocity = Vector3.ClampMagnitude(rb.linearVelocity, cfg.tongueMaxBodySpeed);
 
             // Tragar automáticamente la comida que llega a la boca.
             if (food && dist <= cfg.swallowDistance * Mathf.Max(1f, s.visualScale) && food.FitsMouth(s.mouthCapacity)
-                && p.Stomach.Food < cfg.maxFood - 0.001f)
+                && food.GrabberCount <= 1 && p.Stomach.Food < cfg.maxFood - 0.001f)
                 p.TryEat(food);
         }
 
@@ -607,7 +608,20 @@ namespace Lizards
             }
         }
 
-        void OnDisable() => SetHighlight(highlighted, false);
+        void OnDisable()
+        {
+            SetHighlight(highlighted,false);
+            if(food)
+            {
+                if(carrying)
+                {
+                    food.Body.isKinematic=false;
+                    foreach(var fc in food.GetComponentsInChildren<Collider>())foreach(var pc in GetComponentsInChildren<Collider>())Physics.IgnoreCollision(fc,pc,false);
+                }
+                food.ReleaseGrab(p);
+            }
+            ClearTarget();State=TongueState.Idle;
+        }
 
         void LateUpdate()
         {

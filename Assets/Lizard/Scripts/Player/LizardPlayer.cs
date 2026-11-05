@@ -168,8 +168,11 @@ namespace Lizards
         public bool TryEat(FoodItem f)
         {
             if (!f) return false;
+            if (f.GrabberCount > 1) { Message("Otro jugador también sujeta la comida: suéltenla o pártanla primero."); return false; }
             if (Stomach.Food >= Config.maxFood - 0.001f) { Message("¡Estás lleno!"); return false; }
             if (!f.FitsMouth(Stats.mouthCapacity)) { Message("Demasiado grande para tragar"); return false; }
+            var sharedFood=f.GetComponent<SharedFoodSync>();
+            if(sharedFood&&SharedFoodSync.Online&&!sharedFood.ApprovedEat)return sharedFood.RequestEat(this);
             if (Tongue.HeldFood == f) Tongue.Release(false);
             if (!Stomach.TryConsumeFood(f)) return false;
             Visual?.PlayGulp();
