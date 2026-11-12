@@ -471,7 +471,7 @@ namespace Lizards.EditorTools
             }
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());AssetDatabase.SaveAssets();
         }
-        static void CreateHUD(LevelTwoExpedition mission)
+        internal static void CreateHUD(LevelTwoExpedition mission)
         {
             var canvasGO=new GameObject("Objetivo de expedición",typeof(Canvas),typeof(CanvasScaler));var canvas=canvasGO.GetComponent<Canvas>();canvas.renderMode=RenderMode.ScreenSpaceOverlay;canvas.sortingOrder=10;
             var scaler=canvasGO.GetComponent<CanvasScaler>();scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1600,1000);

@@ -19,7 +19,7 @@ namespace Lizards
         void Update()
         {
             if(Completed&&Time.time>=returnAt&&UnityEngine.SceneManagement.SceneManager.GetActiveScene().name.StartsWith("LEVEL")&&Application.CanStreamedLevelBeLoaded("Lobby"))
-            {UnityEngine.SceneManagement.SceneManager.LoadScene("Lobby");return;}
+            {PcFrontEnd.Travel("Lobby");return;}
             bool rescued = !survivor || survivor.Form != LizardForm.Small; // sin compañero que rescatar, solo cuenta la comida
             Ready = depot && depot.Delivered >= requiredFood && rescued;
             if (exitDoor) exitDoor.SetOpen(Ready);

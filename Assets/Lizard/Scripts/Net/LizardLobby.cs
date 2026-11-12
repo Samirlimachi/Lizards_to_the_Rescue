@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Fusion;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -12,6 +14,7 @@ namespace Lizards
     /// </summary>
     public class LizardLobby : MonoBehaviour
     {
+        public enum RoomAction { Create, Join, Random, Legacy }
         const string NameKey = "Lizards.PlayerName", RoomKey = "Lizards.RoomCode";
 
         [Tooltip("Prefab de red del lagarto (con NetworkObject, NetworkTransform y LizardNetSync).")]
@@ -20,6 +23,7 @@ namespace Lizards
         public Vector3 spawnPoint = new Vector3(0f, 0.2f, 2f);
         public bool showOnStart = true;
         public bool OnlineConnected => runner && runner.IsRunning;
+        public string SessionCode => OnlineConnected ? runner.SessionInfo.Name : "";
         public void OpenRoomMenu() { Visible = true; }
 
         public static bool Visible { get; private set; }
@@ -44,64 +48,102 @@ namespace Lizards
             if (Visible) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
         }
 
-        async void Connect()
+        async void Connect() => status = await ConnectAsync(playerName, roomCode, RoomAction.Legacy);
+
+        public async Task<string> ConnectAsync(string name, string code, RoomAction action)
         {
-            playerName = playerName.Trim();
-            roomCode = roomCode.Trim().ToUpperInvariant();
-            if (playerName.Length == 0) { status = "Escribe tu nombre de jugador."; return; }
-            if (roomCode.Length == 0) { status = "Escribe el código de la sala."; return; }
-            if (!playerPrefab) { status = "Falta el prefab de red (usa Lizards → Preparar multijugador)."; return; }
+            if (connecting || OnlineConnected) return "Ya hay una conexión en curso.";
+            playerName = (name ?? "").Trim();
+            roomCode = (code ?? "").Trim().ToUpperInvariant();
+            if (playerName.Length == 0) return "Escribe tu nombre de jugador.";
+            if (action != RoomAction.Random && roomCode.Length == 0) return "Escribe el código de la sala.";
+            if (!playerPrefab) return "El refugio no tiene asignado el prefab de red.";
             PlayerPrefs.SetString(NameKey, playerName);
             PlayerPrefs.SetString(RoomKey, roomCode);
 
             connecting = true;
-            status = $"Conectando a la sala {roomCode}…";
+            status = action == RoomAction.Random ? "Buscando una partida pública…" : $"Conectando a la sala {roomCode}…";
             LizardNetSync.PendingLocalName = playerName;
 
             var go = new GameObject("NetworkRunner");
             runner = go.AddComponent<NetworkRunner>();
+            var networkScenes = go.AddComponent<NetworkSceneManagerDefault>();
             var sceneInfo = new NetworkSceneInfo();
             sceneInfo.AddSceneRef(SceneRef.FromIndex(SceneManager.GetActiveScene().buildIndex));
 
-            StartGameResult result;
             try
             {
-                result = await runner.StartGame(new StartGameArgs
+                var args = new StartGameArgs
                 {
                     GameMode = GameMode.Shared,
-                    SessionName = roomCode,
+                    SessionName = action == RoomAction.Random ? null : roomCode,
                     PlayerCount = maxPlayers,
                     Scene = sceneInfo,
-                });
+                    SceneManager = networkScenes,
+                    EnableClientSessionCreation = action == RoomAction.Create || action == RoomAction.Legacy,
+                };
+                if (action == RoomAction.Create || action == RoomAction.Random)
+                    args.SessionProperties = new Dictionary<string, SessionProperty> { ["lizards_refugio"] = 1 };
+                var result = await runner.StartGame(args);
+                if (!result.Ok)
+                {
+                    return result.ShutdownReason switch
+                    {
+                        ShutdownReason.GameNotFound when action == RoomAction.Random => "No hay partidas públicas disponibles.",
+                        ShutdownReason.GameNotFound => "No se encontró una partida con ese código.",
+                        ShutdownReason.GameIsFull => "La partida está llena.",
+                        ShutdownReason.GameClosed => "La partida ya está cerrada.",
+                        _ => $"No se pudo conectar ({result.ShutdownReason})."
+                    };
+                }
+
+                float deadline = Time.realtimeSinceStartup + 10;
+                while (runner && runner.IsRunning && (!runner.LocalPlayer.IsRealPlayer || runner.IsSceneManagerBusy) && Time.realtimeSinceStartup < deadline)
+                    await Task.Yield();
+                if (!runner || !runner.IsRunning || !runner.LocalPlayer.IsRealPlayer || runner.IsSceneManagerBusy)
+                {
+                    await DisconnectAsync();
+                    return "La sala no terminó de preparar al jugador local.";
+                }
+
+                var localPlayer = runner.LocalPlayer;
+                Vector3 offset = new Vector3((localPlayer.PlayerId % 4) * 1.5f - 2.25f, 0f, 0f);
+                var networkPlayer = runner.Spawn(playerPrefab, spawnPoint + offset, Quaternion.identity, localPlayer);
+                var sync = networkPlayer ? networkPlayer.GetComponent<LizardNetSync>() : null;
+                deadline = Time.realtimeSinceStartup + 6;
+                while (networkPlayer && sync && (!networkPlayer.IsValid || !sync.Player) && Time.realtimeSinceStartup < deadline)
+                    await Task.Yield();
+                if (!networkPlayer || !networkPlayer.IsValid || !networkPlayer.HasStateAuthority || !sync || !sync.Player)
+                {
+                    await DisconnectAsync();
+                    return "No se pudo crear al jugador en la sala.";
+                }
+                runner.SetPlayerObject(localPlayer, networkPlayer);
+                foreach (var player in FindObjectsByType<LizardPlayer>(FindObjectsInactive.Exclude))
+                    if (!player.GetComponent<NetworkObject>()) player.gameObject.SetActive(false);
+                Visible = false;
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+                return null;
             }
             catch (Exception e)
             {
-                status = "Error al conectar: " + e.Message;
-                connecting = false;
-                if (go) Destroy(go);
-                return;
+                if (OnlineConnected) await DisconnectAsync();
+                return "Error al conectar. " + e.Message;
             }
-
-            if (!result.Ok)
+            finally
             {
-                status = $"No se pudo conectar ({result.ShutdownReason}).";
                 connecting = false;
-                if (go) Destroy(go);
-                return;
+                if (!OnlineConnected && go) Destroy(go);
             }
+        }
 
-            // Los lagartos locales de la escena se ocultan: en línea cada jugador tiene el suyo.
-            foreach (var p in FindObjectsByType<LizardPlayer>(FindObjectsInactive.Exclude))
-                if (!p.GetComponent<NetworkObject>()) p.gameObject.SetActive(false);
-
-            Vector3 offset = new Vector3((runner.LocalPlayer.PlayerId % 4) * 1.5f - 2.25f, 0f, 0f);
-            runner.Spawn(playerPrefab, spawnPoint + offset, Quaternion.identity, runner.LocalPlayer);
-
-            int count = 0; foreach (var _ in runner.ActivePlayers) count++;
-            status = $"En la sala {roomCode} · {count} jugador(es)";
-            connecting = false;
-            Visible = false;
-            Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false;
+        public async Task DisconnectAsync()
+        {
+            var current = runner;
+            runner = null;
+            if (current && current.IsRunning) await current.Shutdown();
+            if (current) Destroy(current.gameObject);
         }
 
         void PlaySolo()

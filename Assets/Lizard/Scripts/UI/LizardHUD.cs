@@ -8,7 +8,9 @@ namespace Lizards
     {
         Vector2 reticle; float reticleSize = 20f;
         public LizardCameraRig rig;
-        public static bool MenuOpen { get; private set; }
+        static bool legacyMenuOpen;
+        public static bool MenuOpen => legacyMenuOpen || PcFrontEnd.GameplayMenuOpen;
+        internal static void CloseLegacyMenu() => legacyMenuOpen = false;
         public bool showDebug = true;
 
         GUIStyle label, big, small, box;
@@ -20,9 +22,9 @@ namespace Lizards
         void Update()
         {
             var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb != null && kb.tabKey.wasPressedThisFrame)
+            if (kb != null && kb.tabKey.wasPressedThisFrame && !PcFrontEnd.GameplayMenuOpen)
             {
-                MenuOpen = !MenuOpen;
+                legacyMenuOpen = !legacyMenuOpen;
                 Cursor.lockState = MenuOpen ? CursorLockMode.None : CursorLockMode.Locked;
                 Cursor.visible = MenuOpen;
             }
@@ -52,6 +54,7 @@ namespace Lizards
 
         void OnGUI()
         {
+            if (PcFrontEnd.GameplayMenuOpen) return;
             var p = P;
             if (!p) return;
             Styles();
@@ -146,7 +149,7 @@ namespace Lizards
             GUI.Label(new Rect(16, Screen.height - 28, 900, 24), "[Tab] controles y reasignación · [F10] depuración · [Esc] liberar ratón · clic para capturar ratón", small);
 
             if (showDebug) DrawDebug(p);
-            if (MenuOpen) DrawMenu(p);
+            if (legacyMenuOpen && !PcFrontEnd.GameplayMenuOpen) DrawMenu(p);
         }
 
         void DrawDebug(LizardPlayer p)
@@ -201,7 +204,7 @@ namespace Lizards
             }
             GUI.Label(new Rect(x + 16, yy + 6, w - 32, 24), rebindNote, label);
             if (GUI.Button(new Rect(x + 16, y + h - 40, 200, 28), "Restablecer controles")) { input.ResetBindings(); rebindNote = "Controles restablecidos."; }
-            if (GUI.Button(new Rect(x + w - 136, y + h - 40, 120, 28), "Cerrar")) { MenuOpen = false; Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
+            if (GUI.Button(new Rect(x + w - 136, y + h - 40, 120, 28), "Cerrar")) { legacyMenuOpen = false; Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
         }
     }
 }

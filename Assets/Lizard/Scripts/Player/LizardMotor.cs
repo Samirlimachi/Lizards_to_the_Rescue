@@ -74,6 +74,10 @@ namespace Lizards
             return true;
         }
         public void Stun(float t) => stunUntil = Mathf.Max(stunUntil, Time.time + t);
+        /// <summary>Ralentiza al jugador (p. ej. charcos de gel del slime). factor 0.5 = mitad de velocidad.</summary>
+        public void ApplySlow(float factor, float seconds) { if (Time.time >= slowUntil || factor < slowFactor) slowFactor = factor; slowUntil = Mathf.Max(slowUntil, Time.time + seconds); }
+        public bool Slowed => Time.time < slowUntil;
+        float slowFactor = 1f, slowUntil = -10f;
         /// <summary>Lo llama la lengua de otro jugador: reduce nuestro control en suelo para que el tirón funcione.</summary>
         public void MarkTugged(float t = 0.15f) => tuggedUntil = Mathf.Max(tuggedUntil, Time.time + t);
 
@@ -115,7 +119,7 @@ namespace Lizards
             }
 
             Vector3 v = rb.linearVelocity;
-            Vector3 desired = MoveInput * s.moveSpeed * (Sprinting || p.Form == LizardForm.Giant ? 1f : walkFactor);
+            Vector3 desired = MoveInput * s.moveSpeed * (Sprinting || p.Form == LizardForm.Giant ? 1f : walkFactor) * (Slowed ? slowFactor : 1f);
             float control = Stunned ? 0.1f : IsTugged ? 0.15f : 1f;
             bool tongueAnchored = p.Tongue && p.Tongue.IsSwinging;
 

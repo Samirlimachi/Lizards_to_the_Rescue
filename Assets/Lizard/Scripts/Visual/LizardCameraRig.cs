@@ -38,19 +38,26 @@ namespace Lizards
             yaw = t.transform.eulerAngles.y;
         }
 
-        public void Shake(float amount) => shake = Mathf.Max(shake, amount);
+        public void Shake(float amount)
+        {
+            if (PcGameSettings.CameraShake) shake = Mathf.Max(shake, amount);
+        }
 
         void LateUpdate()
         {
-            if (!target) return;
+            if (!target || PcFrontEnd.GameplayMenuOpen) return;
             var cfg = target.Config; var s = target.Stats;
             float dt = Time.deltaTime;
 
             bool locked = Cursor.lockState == CursorLockMode.Locked;
             Vector2 mouse = locked ? target.Input.LookMouse : Vector2.zero;
             Vector2 stick = target.Input.LookStickValue;
-            yaw += mouse.x * cfg.mouseSensitivity + stick.x * cfg.stickSensitivity * dt;
-            pitch -= mouse.y * cfg.mouseSensitivity + stick.y * cfg.stickSensitivity * dt * 0.7f;
+            float sensitivity = cfg.mouseSensitivity * PcGameSettings.Sensitivity;
+            yaw += mouse.x * sensitivity + stick.x * cfg.stickSensitivity * dt;
+            pitch -= (mouse.y * sensitivity + stick.y * cfg.stickSensitivity * dt * 0.7f) * (PcGameSettings.InvertY ? -1 : 1);
+            if (locked && PcGameSettings.Get("AutoCamera", 0) == 1 && mouse.sqrMagnitude < .01f && target.Input.MoveValue.y > .7f)
+                yaw = Mathf.MoveTowardsAngle(yaw, target.transform.eulerAngles.y, dt * 65f);
+            if (cam) cam.fieldOfView = PcGameSettings.FieldOfView;
             pitch = Mathf.Clamp(pitch, cfg.minPitch, cfg.maxPitch);
 
             float zl = 1f - Mathf.Exp(-dt * cfg.cameraZoomLerp);

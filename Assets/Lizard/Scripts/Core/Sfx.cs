@@ -22,7 +22,7 @@ namespace Lizards
 
         public static void Play(AudioClip clip, Vector3 at, float volume = 0.8f)
         {
-            if (clip && Application.isPlaying) AudioSource.PlayClipAtPoint(clip, at, volume);
+            if (clip && Application.isPlaying) AudioSource.PlayClipAtPoint(clip, at, volume * PcGameSettings.EffectsVolume);
         }
 
         static AudioClip Sweep(string name, float dur, float f0, float f1, float vol)

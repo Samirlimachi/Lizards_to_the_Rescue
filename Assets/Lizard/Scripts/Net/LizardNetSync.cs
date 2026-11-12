@@ -167,7 +167,7 @@ namespace Lizards
 
         void OnGUI()
         {
-            if (!Object || !player) return;
+            if (!Object || !player || !PcGameSettings.PlayerNames || PcFrontEnd.GameplayMenuOpen) return;
             var cam = Camera.main;
             if (!cam) return;
             float h = (player.Form == LizardForm.Giant ? 3.2f : player.Form == LizardForm.Small ? 0.9f : 1.45f);

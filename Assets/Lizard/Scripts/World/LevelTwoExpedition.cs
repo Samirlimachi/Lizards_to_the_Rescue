@@ -67,7 +67,7 @@ namespace Lizards
             var pocket=SwampPocket.Ensure();pocket.Coins+=reward;pocket.Save();
             PlayerPrefs.SetInt("Lizards.ExpeditionDay",Day+1);PlayerPrefs.SetInt("Lizards.Level2Done",1);PlayerPrefs.Save();
             player.Message($"¡Expedición completada! +{reward} monedas");
-            if(Application.CanStreamedLevelBeLoaded("Lobby"))SceneManager.LoadScene("Lobby");
+            if(Application.CanStreamedLevelBeLoaded("Lobby"))PcFrontEnd.Travel("Lobby");
         }
     }
 }

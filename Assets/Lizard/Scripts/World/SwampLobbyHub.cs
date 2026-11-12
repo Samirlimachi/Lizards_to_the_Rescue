@@ -26,7 +26,7 @@ namespace Lizards
             if(Departing)
             {
                 if(Vector3.Distance(p.transform.position,boat.position)>7){Departing=false;p.Message("Salida cancelada: vuelve a la balsa.");}
-                else if(Time.time>=departureAt){Departing=false;SceneManager.LoadScene(levelScene);return;}
+                else if(Time.time>=departureAt){Departing=false;PcFrontEnd.Travel(levelScene);return;}
             }
             if(departureBoard)departureBoard.text=Departing?"LA BALSA SALE EN "+Mathf.CeilToInt(departureAt-Time.time)+"…":"EMBARCADERO\n[E] expedición a las alcantarillas\nPermanece en la balsa";
             if(LizardLobby.Visible)return;

@@ -21,11 +21,102 @@ namespace Lizards
 
         InputActionRebindingExtensions.RebindingOperation rebindOp;
 
+        [Serializable]
+        sealed class BindingProfile
+        {
+            public int version;
+            public List<SavedBinding> bindings = new();
+        }
+
+        [Serializable]
+        sealed class SavedBinding
+        {
+            public string action, path, processors, interactions;
+            public int index;
+        }
+
         void Awake()
         {
             Build();
-            try { var json = PlayerPrefs.GetString(PrefsKey, ""); if (!string.IsNullOrEmpty(json)) Asset.LoadBindingOverridesFromJson(json); }
+            ReloadBindings();
+        }
+
+        public void ReloadBindings()
+        {
+            if (!Asset) return;
+            foreach (var map in Asset.actionMaps) map.RemoveAllBindingOverrides();
+            try
+            {
+                string json = PlayerPrefs.GetString(PrefsKey, "");
+                if (string.IsNullOrEmpty(json)) return;
+                var profile = JsonUtility.FromJson<BindingProfile>(json);
+                if (profile?.bindings == null) return;
+                if (profile.version == 0)
+                {
+                    LoadLegacyBindings(profile);
+                    return;
+                }
+                foreach (var saved in profile.bindings)
+                {
+                    var action = Asset.FindAction(saved.action);
+                    if (action != null && saved.index >= 0 && saved.index < action.bindings.Count)
+                        ApplySavedBinding(action, saved.index, saved);
+                }
+            }
             catch (Exception e) { Debug.LogWarning("No se pudieron cargar las reasignaciones: " + e.Message); }
+        }
+
+        void LoadLegacyBindings(BindingProfile profile)
+        {
+            foreach (var saved in profile.bindings)
+            {
+                var action = Asset.FindAction(saved.action);
+                if (action == null || string.IsNullOrEmpty(saved.path)) continue;
+                int layoutEnd = saved.path.IndexOf('>');
+                if (layoutEnd < 0) continue;
+                string device = saved.path.Substring(0, layoutEnd + 1);
+                int match = -1;
+                for (int i = 0; i < action.bindings.Count; i++)
+                {
+                    if (!action.bindings[i].path.StartsWith(device, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (match >= 0) { match = -1; break; }
+                    match = i;
+                }
+                if (match >= 0) ApplySavedBinding(action, match, saved);
+            }
+        }
+
+        static void ApplySavedBinding(InputAction action, int index, SavedBinding saved)
+        {
+            action.ApplyBindingOverride(index, new InputBinding
+            {
+                overridePath = saved.path,
+                overrideProcessors = saved.processors,
+                overrideInteractions = saved.interactions,
+            });
+        }
+
+        void SaveBindings()
+        {
+            // Each player builds its own asset, so Unity's generated binding GUIDs differ.
+            var profile = new BindingProfile { version = 1 };
+            foreach (var map in Asset.actionMaps)
+                foreach (var action in map.actions)
+                    for (int i = 0; i < action.bindings.Count; i++)
+                    {
+                        var binding = action.bindings[i];
+                        if (!binding.hasOverrides) continue;
+                        profile.bindings.Add(new SavedBinding
+                        {
+                            action = map.name + "/" + action.name,
+                            index = i,
+                            path = binding.overridePath,
+                            processors = binding.overrideProcessors,
+                            interactions = binding.overrideInteractions,
+                        });
+                    }
+            PlayerPrefs.SetString(PrefsKey, JsonUtility.ToJson(profile));
+            PlayerPrefs.Save();
         }
 
         void OnEnable() { Asset?.Enable(); }
@@ -83,28 +174,29 @@ namespace Lizards
         }
 
         // ---- Lectura (neutra si no hay control) ----
-        public Vector2 MoveValue => controlled ? Vector2.ClampMagnitude(Move.ReadValue<Vector2>(), 1f) : Vector2.zero;
+        bool GameplayInput => controlled && !PcFrontEnd.GameplayMenuOpen;
+        public Vector2 MoveValue => GameplayInput ? Vector2.ClampMagnitude(Move.ReadValue<Vector2>(), 1f) : Vector2.zero;
         public Vector2 LookMouse => controlled ? Look.ReadValue<Vector2>() : Vector2.zero;
         public Vector2 LookStickValue => controlled ? LookStick.ReadValue<Vector2>() : Vector2.zero;
         public float ReelValue
         {
             get
             {
-                if (!controlled) return 0f;
+                if (!GameplayInput) return 0f;
                 float scroll = ReelScroll.ReadValue<float>();
                 // La rueda devuelve ±120 por muesca en Windows; la normalizamos a "pulsos".
                 float s = Mathf.Abs(scroll) > 0.01f ? -Mathf.Sign(scroll) * 4f : 0f;
                 return Mathf.Clamp(Reel.ReadValue<float>() + s, -4f, 4f);
             }
         }
-        public bool Pressed(InputAction a) => controlled && a.WasPressedThisFrame();
-        public bool Held(InputAction a) => controlled && a.IsPressed();
-        public bool Released(InputAction a) => controlled && a.WasReleasedThisFrame();
+        public bool Pressed(InputAction a) => GameplayInput && a.WasPressedThisFrame();
+        public bool Held(InputAction a) => GameplayInput && a.IsPressed();
+        public bool Released(InputAction a) => GameplayInput && a.WasReleasedThisFrame();
 
         // ---- Reasignación ----
         public bool IsRebinding => rebindOp != null;
 
-        public void StartRebind(InputAction action, int bindingIndex, Action onDone)
+        public void StartRebind(InputAction action, int bindingIndex, Action onDone, bool pcOnly = false)
         {
             if (rebindOp != null) return;
             action.Disable();
@@ -115,13 +207,14 @@ namespace Lizards
                 .OnMatchWaitForAnother(0.1f)
                 .OnComplete(_ => Finish())
                 .OnCancel(_ => Finish());
+            if (pcOnly) rebindOp.WithControlsExcluding("<Gamepad>").WithControlsExcluding("<Joystick>");
             rebindOp.Start();
 
             void Finish()
             {
                 rebindOp?.Dispose(); rebindOp = null;
                 action.Enable();
-                PlayerPrefs.SetString(PrefsKey, Asset.SaveBindingOverridesAsJson());
+                SaveBindings();
                 onDone?.Invoke();
             }
         }
