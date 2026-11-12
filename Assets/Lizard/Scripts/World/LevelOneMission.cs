@@ -18,6 +18,9 @@ namespace Lizards
         float returnAt;
         void Update()
         {
+            // Tutorial (abierto desde el menú principal): al terminar se vuelve al menú con las opciones.
+            if(Completed&&Time.time>=returnAt&&PcFrontEnd.TutorialRun)
+            {returnAt=float.MaxValue;PcFrontEnd.Travel(PcFrontEnd.MenuScene);return;}
             if(Completed&&Time.time>=returnAt&&UnityEngine.SceneManagement.SceneManager.GetActiveScene().name.StartsWith("LEVEL")&&Application.CanStreamedLevelBeLoaded("Lobby"))
             {PcFrontEnd.Travel("Lobby");return;}
             bool rescued = !survivor || survivor.Form != LizardForm.Small; // sin compañero que rescatar, solo cuenta la comida
@@ -39,7 +42,7 @@ namespace Lizards
                 if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "LEVEL1") { PlayerPrefs.SetInt("Lizards.Level1Done", 1); PlayerPrefs.Save(); } // desbloquea la estación 02
                 var pocket=SwampPocket.Ensure();pocket.Coins+=coinReward;pocket.Save();
                 player.Message($"¡{levelName} completado!");
-                player.Message($"+{coinReward} monedas. Regreso al refugio en 5 segundos.");
+                player.Message(PcFrontEnd.TutorialRun ? "¡Tutorial completado! Volviendo al menú en 5 segundos." : $"+{coinReward} monedas. Regreso al refugio en 5 segundos.");
                 Fx.Burst(transform.position + Vector3.up * 2, new Color(0.25f, 1, 0.75f), 50, 5, .15f);
                 Sfx.Play(Sfx.Help, transform.position);
             }

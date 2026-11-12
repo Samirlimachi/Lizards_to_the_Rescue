@@ -50,7 +50,7 @@ namespace Lizards
         {
             levelScene = NextLevel;
             if(!Application.CanStreamedLevelBeLoaded(levelScene)){p.Message(levelScene+" no está disponible en la compilación.");return false;}
-            if(roomMenu&&roomMenu.OnlineConnected){p.Message("La salida de expedición está disponible en modo local; la transición online aún necesita sincronización.");return false;}
+            // Con sala abierta, la balsa lleva a todo el grupo (LevelNet carga el nivel para todos).
             if(Departing)return true;
             Departing=true;departureAt=Time.time+3;Sfx.Play(Sfx.Help,boat.position);return true;
         }

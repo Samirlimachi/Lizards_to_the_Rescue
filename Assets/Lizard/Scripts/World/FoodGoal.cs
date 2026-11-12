@@ -10,6 +10,8 @@ namespace Lizards
         void OnTriggerEnter(Collider c)
         {
             var f = c.GetComponentInParent<FoodItem>();
+            // En multijugador cuenta solo el maestro (los demás ven copias de la comida y reciben el total por red).
+            if (f && SharedFoodSync.Online && !SharedFoodSync.Master && f.GetComponent<SharedFoodSync>()) return;
             if (f && f.TryConsume(null, out float v))
             {
                 Delivered += v;

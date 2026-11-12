@@ -95,10 +95,24 @@ namespace Lizards
             string tl = t.State == TongueState.Attached ? $"{t.AttachedLabel}  ·  largo {t.CurrentLength:0.0} m  ·  tensión {t.Tension01 * 100f:0}%"
                 : t.AimLabel.Length > 0 ? $"{t.AimLabel}  ·  {t.AimDistance:0.0}/{p.Stats.tongueRange:0} m" : $"Alcance de la lengua: {p.Stats.tongueRange:0} m";
             if (t.HeldPartner)
-                tl += t.CatapultReady ? $"\n¡CATAPULTA LISTA! [{p.Input.Display(p.Input.Launch)}] lanzar ({t.CatapultCharge * 100f:0}%)"
-                                      : $"\nAléjate para tensar la catapulta ({t.CatapultCharge * 100f:0}%)";
+            {
+                var other = t.HeldPartner;
+                if (other.Tongue && other.Tongue.IsSwinging)   // el compañero está anclado: es una honda y él es la bala
+                    tl += t.CatapultCharge >= p.Config.slingMinCharge ? $"\n¡HONDA TENSA! Suéltalo para dispararlo hacia su ancla ({t.CatapultCharge * 100f:0}%)"
+                                                                       : $"\nAléjate para tensar la honda ({t.CatapultCharge * 100f:0}%)";
+                else
+                    tl += t.CatapultReady ? $"\n¡CATAPULTA LISTA! [{p.Input.Display(p.Input.Launch)}] lanzar ({t.CatapultCharge * 100f:0}%)"
+                                          : $"\nAléjate para tensar la catapulta ({t.CatapultCharge * 100f:0}%)";
+            }
             foreach (var o in LizardPlayer.All)
-                if (o != p && o.Tongue && o.Tongue.HeldPartner == p) { tl += $"\n{o.displayName} te sujeta · [{p.Input.Display(p.Input.Jump)}] soltarte"; break; }
+                if (o != p && o.Tongue && o.Tongue.HeldPartner == p)
+                {
+                    tl += t.IsSwinging
+                        ? (t.SlingReady ? $"\n¡HONDA CARGADA ({t.SlingCharge * 100f:0}%)! Que {o.displayName} te suelte o [{p.Input.Display(p.Input.Jump)}] para dispararte"
+                                        : $"\n{o.displayName} tensa tu honda ({t.SlingCharge * 100f:0}%)")
+                        : $"\n{o.displayName} te sujeta · [{p.Input.Display(p.Input.Jump)}] soltarte";
+                    break;
+                }
             var tsz = label.CalcSize(new GUIContent(tl));
             GUI.Label(new Rect(reticle.x - tsz.x / 2, reticle.y + 22, tsz.x + 10, tsz.y + 6), tl, label);
 

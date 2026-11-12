@@ -159,6 +159,15 @@ namespace Lizards
         public float catapultUpRatio = 0.45f;
         [Tooltip("Velocidad con que la carga sube al tensar y baja al aflojar.")]
         public float catapultChargeRate = 1.5f;
+        [Header("Honda (anclado + compañero que tira)")]
+        [Tooltip("Carga mínima de la honda (tensión 0-1 de tu lengua anclada mientras un compañero te estira).")]
+        public float slingMinCharge = 0.25f;
+        [Tooltip("Velocidad del disparo con la honda a carga máxima (tú eres la bala).")]
+        public float slingMaxSpeed = 21f;
+        public float slingUpRatio = 0.38f;
+        public float slingChargeRate = 1.4f;
+        [Tooltip("Fracción del impulso que recibe el compañero que tiraba (retroceso hacia ti).")]
+        public float slingRecoil = 0.32f;
 
         [Header("Ácido")]
         public float maxAcid = 3f;

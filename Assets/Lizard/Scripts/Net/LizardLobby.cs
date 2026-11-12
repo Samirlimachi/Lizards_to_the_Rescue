@@ -22,8 +22,8 @@ namespace Lizards
         public int maxPlayers = 4;
         public Vector3 spawnPoint = new Vector3(0f, 0.2f, 2f);
         public bool showOnStart = true;
-        public bool OnlineConnected => runner && runner.IsRunning;
-        public string SessionCode => OnlineConnected ? runner.SessionInfo.Name : "";
+        public bool OnlineConnected => (runner && runner.IsRunning) || LevelNet.InSession;
+        public string SessionCode => OnlineConnected ? (runner ? runner : LevelNet.Runner).SessionInfo.Name : "";
         public void OpenRoomMenu() { Visible = true; }
 
         public static bool Visible { get; private set; }
@@ -33,6 +33,13 @@ namespace Lizards
         NetworkRunner runner;
         Texture2D white;
         GUIStyle label, field, button, title, small, buttonGhost;
+
+        void Start()
+        {
+            // Si ya hay sala abierta (se volvió de un nivel), no se vuelve a mostrar el menú de salas.
+            if (LevelNet.InSession) Visible = false;
+            if (LevelNet.PlayerPrefab == null && playerPrefab) LevelNet.PlayerPrefab = playerPrefab;
+        }
 
         void Awake()
         {
@@ -61,11 +68,13 @@ namespace Lizards
             PlayerPrefs.SetString(NameKey, playerName);
             PlayerPrefs.SetString(RoomKey, roomCode);
 
-            connecting = true;
+            connecting = true; LevelNet.Connecting = true;
             status = action == RoomAction.Random ? "Buscando una partida pública…" : $"Conectando a la sala {roomCode}…";
             LizardNetSync.PendingLocalName = playerName;
 
             var go = new GameObject("NetworkRunner");
+            DontDestroyOnLoad(go);                 // la sala sigue abierta al viajar entre el refugio y los niveles
+            LevelNet.PlayerPrefab = playerPrefab;  // para reaparecer en cada nivel
             runner = go.AddComponent<NetworkRunner>();
             var networkScenes = go.AddComponent<NetworkSceneManagerDefault>();
             var sceneInfo = new NetworkSceneInfo();
@@ -133,7 +142,7 @@ namespace Lizards
             }
             finally
             {
-                connecting = false;
+                connecting = false; LevelNet.Connecting = false;
                 if (!OnlineConnected && go) Destroy(go);
             }
         }
@@ -144,6 +153,7 @@ namespace Lizards
             runner = null;
             if (current && current.IsRunning) await current.Shutdown();
             if (current) Destroy(current.gameObject);
+            else await LevelNet.Disconnect();
         }
 
         void PlaySolo()

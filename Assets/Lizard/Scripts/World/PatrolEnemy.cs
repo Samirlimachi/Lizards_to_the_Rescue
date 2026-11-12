@@ -14,6 +14,8 @@ namespace Lizards
 
         void Awake() { rb = GetComponent<Rigidbody>(); rb.isKinematic = true; rb.interpolation = RigidbodyInterpolation.Interpolate; basePos = transform.position; }
 
+        void OnEnable() { basePos = transform.position; }
+
         void FixedUpdate()
         {
             Vector3 target = toB ? pointB : pointA;

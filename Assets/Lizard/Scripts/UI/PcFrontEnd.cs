@@ -42,8 +42,13 @@ namespace Lizards
         RectTransform progressFill, progressFace;
         RectTransform[] flying;
 
+        /// <summary>El nivel actual se abrió desde TUTORIAL en el menú principal: al terminarlo se vuelve al menú.</summary>
+        public static bool TutorialRun { get; private set; }
+
         public static void Travel(string scene)
         {
+            // Con sala abierta, los cambios de nivel se hacen para todo el grupo a través de Fusion.
+            if (scene != MenuScene && LevelNet.TryTravel(scene)) { if (Instance) Instance.Show(Page.Loading); return; }
             if (Instance) Instance.BeginLoad(scene);
             else SceneManager.LoadScene(scene);
         }
@@ -311,7 +316,7 @@ namespace Lizards
             Heading("PARTIDA", 1422, 110, 392, 65, 43, Color.white);
             Text(lastScene == "Lobby" ? "Refugio" : lastScene == "LEVEL1" ? "Estación de entrenamiento" : "Alcantarillas", 1422, 205, 410, 66, 28, Color.white);
             var lobby = FindAnyObjectByType<LizardLobby>();
-            string code = lobby ? lobby.SessionCode : "";
+            string code = lobby ? lobby.SessionCode : LevelNet.Runner ? LevelNet.Runner.SessionInfo.Name : "";
             var codeLabel = Text(code.Length > 0 ? "Sala en línea" : "Partida local", 1422, 277, 410, 58, 28, Lime);
             Button("CONTINUAR", 718, 440, 484, 69, () => Show(Page.None), 42, Purple);
             Button("AJUSTES", 718, 520, 484, 69, () => OpenSettings(Page.Pause), 42, Ink);
@@ -341,7 +346,9 @@ namespace Lizards
 
         void BeginLoad(string scene, RoomRequest room = null, bool tutorial = false)
         {
-            if (!transitioning) StartCoroutine(Load(scene, room, tutorial));
+            if (transitioning) return;
+            TutorialRun = tutorial;
+            StartCoroutine(Load(scene, room, tutorial));
         }
 
         IEnumerator Load(string scene, RoomRequest room, bool tutorial)
@@ -357,10 +364,10 @@ namespace Lizards
             Show(Page.Loading);
             SetProgress(0);
             yield return null;
-            var oldLobby = FindAnyObjectByType<LizardLobby>();
-            if (oldLobby && oldLobby.OnlineConnected && scene == MenuScene)
+            if (scene == MenuScene && LevelNet.InSession)
             {
-                var disconnect = oldLobby.DisconnectAsync();
+                // Volver al menú cierra la sala (también desde los niveles, donde no hay controlador de salas).
+                var disconnect = LevelNet.Disconnect();
                 while (!disconnect.IsCompleted) yield return null;
                 if (disconnect.IsFaulted) Debug.LogException(disconnect.Exception);
             }

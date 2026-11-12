@@ -33,7 +33,7 @@ namespace Lizards
         [Rpc(RpcSources.StateAuthority,RpcTargets.All)]
         public void RPC_RequestFoodSpawn(string key,int variant,Vector3 p,Quaternion q,float value,float mass,Vector3 velocity)
         {
-            if(!Runner.IsSharedModeMasterClient||!player||variant<0||variant>6||value<=0||value>player.Config.maxFood||mass<=0||Vector3.Distance(player.MouthPosition,p)>3)return;
+            if(!Runner.IsSharedModeMasterClient||!player||!SharedFoodSync.ValidVariant(variant)||value<=0||value>player.Config.maxFood||mass<=0||Vector3.Distance(player.MouthPosition,p)>3)return;
             SharedFoodSync.Local.RPC_FoodSpawn(key,variant,p,q,value,mass,Vector3.ClampMagnitude(velocity,30));
         }
         [Rpc(RpcSources.StateAuthority,RpcTargets.All)]
@@ -52,6 +52,7 @@ namespace Lizards
             var source=SharedFoodSync.Local;float value=UnityEngine.Object.FindAnyObjectByType<FoodGoal>()?.Delivered??0;
             foreach(string key in SharedFoodSync.Removed.ToArray())source.RPC_FoodDelivered(key,value);
             foreach(var f in SharedFoodSync.Live.Values.ToArray())if(f){var food=f.GetComponent<FoodItem>();source.RPC_FoodSpawn(f.id,f.variant,f.transform.position,f.transform.rotation,food.nutrition,food.Body.mass,food.Body.isKinematic?Vector3.zero:food.Body.linearVelocity);}
+            LevelNet.Instance?.SendFullState();
         }
     }
 }

@@ -29,7 +29,7 @@ namespace Lizards.EditorTools
         static Material vertexMat, waterMat, fallMat, unlitMat, limeMat, plateMat;
         static FoodItem[] foods;
         static TMP_FontAsset font;
-        static int foodSerial;
+        static int foodSerial, netFoodSerial;
         static readonly List<(K k, Transform t)> rooms = new();
         static readonly List<ExpeditionSupplyCrate> caches = new();
 
@@ -70,8 +70,25 @@ namespace Lizards.EditorTools
         // ---------------- Comida, cajas y piezas con física ----------------
         static void LoadFoods()
         {
-            string[] ids = { "Apple", "Banana", "Corn", "Broccoli", "Avocado", "Pepper" };
-            foods = ids.Select(id => AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Lizard/LevelTwo/Expedition/FoodPrefabs/" + id + ".prefab")).Where(g => g).Select(g => g.GetComponent<FoodItem>()).ToArray();
+            // Comida compartida en red: copias de la comida de la expedición con SharedFoodSync, en Resources/NetFood,
+            // para que el cliente maestro pueda crearla en todos los clientes (variant = 100 + índice).
+            const string netDir = "Assets/Lizard/Resources/NetFood";
+            if (!AssetDatabase.IsValidFolder(netDir)) AssetDatabase.CreateFolder("Assets/Lizard/Resources", "NetFood");
+            var list = new System.Collections.Generic.List<FoodItem>();
+            for (int i = 0; i < SharedFoodSync.NetFoodKinds.Length; i++)
+            {
+                string kind = SharedFoodSync.NetFoodKinds[i];
+                var src = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Lizard/LevelTwo/Expedition/FoodPrefabs/" + kind + ".prefab");
+                if (!src) continue;
+                var go = (GameObject)PrefabUtility.InstantiatePrefab(src);
+                PrefabUtility.UnpackPrefabInstance(go, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                var sync = go.GetComponent<SharedFoodSync>() ?? go.AddComponent<SharedFoodSync>();
+                sync.variant = 100 + i; sync.id = "";
+                var saved = PrefabUtility.SaveAsPrefabAsset(go, netDir + "/" + kind + ".prefab");
+                Object.DestroyImmediate(go);
+                list.Add(saved.GetComponent<FoodItem>());
+            }
+            foods = list.ToArray();
             if (foods.Length == 0) throw new Exception("Faltan los prefabs de comida de la expedición (Lizards/Level 2/Construir expedición los crea).");
         }
         static FoodItem Food(Vector3 p, int index = -1, float value = 1, float scale = 1)
@@ -81,6 +98,7 @@ namespace Lizards.EditorTools
             go.transform.SetParent(currentRoom, true); go.transform.position = p; go.transform.rotation = Quaternion.Euler(0, Rf(0, 360), 0); go.transform.localScale *= scale;
             var b = FoodCollectionBuilder.VisualBounds(go); go.transform.position += Vector3.up * (p.y + 0.03f - b.min.y);
             var food = go.GetComponent<FoodItem>(); food.nutrition = value; food.size = foods[kind].size * scale;
+            var net = go.GetComponent<SharedFoodSync>(); if (net) { net.id = "L2-" + (netFoodSerial++); PrefabUtility.RecordPrefabInstancePropertyModifications(net); } // misma clave en todos los clientes
             if (scale > 1.2f) food.GetComponent<Rigidbody>().mass = 3;
             go.name = (scale > 1.2f ? "Provisión grande · arrastrar" : "Comida") + " · " + go.GetComponent<FoodCollectionIdentity>().modelId;
             PrefabUtility.RecordPrefabInstancePropertyModifications(go.transform); PrefabUtility.RecordPrefabInstancePropertyModifications(food);
@@ -179,7 +197,7 @@ namespace Lizards.EditorTools
             Directory.CreateDirectory(Dir + "/Meshes"); AssetDatabase.Refresh();
             K.MeshDir = Dir + "/Meshes"; K.Serial = 0; K.Lamps.Clear();
             K.Bevel = AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Lizard/LevelOne/ReferenceStyle/Meshes/Bloque biselado unitario.asset");
-            rnd = new System.Random(4242); foodSerial = 0; rooms.Clear(); caches.Clear();
+            rnd = new System.Random(4242); foodSerial = 0; netFoodSerial = 0; rooms.Clear(); caches.Clear();
 
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             GameObject saltenas = null;

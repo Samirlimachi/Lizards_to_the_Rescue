@@ -324,6 +324,20 @@ namespace Lizards
                     rb.linearVelocity = Vector3.ClampMagnitude(v, cfg.tongueMaxReleaseSpeed);
                 }
                 // Soltar a un compañero no lo lanza: conserva su propio movimiento. El lanzamiento es TryCatapult (Q).
+                // Honda: si el compañero estaba anclado y la liga tensa, él sale disparado (lo hace su propio cliente)
+                // y nosotros recibimos un retroceso más pequeño hacia él.
+                if (mode == Mode.Partner && partner && partner.Tongue && partner.Tongue.IsSwinging && CatapultCharge >= cfg.slingMinCharge)
+                {
+                    Vector3 toward = Vector3.ProjectOnPlane(partner.CenterPosition - p.CenterPosition, Vector3.up);
+                    if (toward.sqrMagnitude > 0.01f)
+                    {
+                        float k = Mathf.Lerp(0.5f, 1f, Mathf.InverseLerp(cfg.slingMinCharge, 1f, CatapultCharge));
+                        rb.linearVelocity += toward.normalized * cfg.slingMaxSpeed * cfg.slingRecoil * k + Vector3.up * 2f * k;
+                        rb.linearVelocity = Vector3.ClampMagnitude(rb.linearVelocity, cfg.tongueMaxReleaseSpeed);
+                        p.Motor.MarkTugged(0.5f);
+                        Sfx.Play(Sfx.Stick, p.MouthPosition, 0.6f);
+                    }
+                }
             }
             if (carrying) StopCarry(withBoost);
             if (food) food.ReleaseGrab(p);
@@ -341,6 +355,13 @@ namespace Lizards
             if (State != TongueState.Attached || mode != Mode.Partner || !partner) return false;
             if (CatapultCharge < cfg.catapultMinCharge) { p.Message("Aléjate para tensar la lengua antes de lanzar"); return false; }
             var target = partner;
+            // Compañero anclado: la Q suelta la honda (la bala sale hacia su ancla; nosotros, retroceso).
+            if (target.Tongue && target.Tongue.IsSwinging)
+            {
+                Release(false);
+                p.Message($"¡Honda! Has disparado a {target.displayName}");
+                return true;
+            }
             Transform cam = p.CameraRig ? p.CameraRig.CameraTransform : transform;
             Vector3 fwd = Vector3.ProjectOnPlane(cam.forward, Vector3.up).normalized;
             if (fwd.sqrMagnitude < 0.01f) fwd = transform.forward;
@@ -416,10 +437,75 @@ namespace Lizards
 
         // ---------------- Física ----------------
 
+        // ---------------- Honda ----------------
+        // Tú estás anclado (lengua pegada al piso o a una pared) y un compañero te sujeta con su lengua y tira hacia atrás.
+        // Tu lengua se estira como una liga y carga la honda. Cuando el compañero te suelta (o saltas para soltarte),
+        // tu lengua se despega y sales disparado hacia el ancla y más allá: tú eres la bala. El compañero recibe un retroceso menor.
+        /// <summary>Carga de la honda (0-1) mientras un compañero te estira estando anclado.</summary>
+        public float SlingCharge { get; private set; }
+        public bool SlingReady => SlingCharge >= p.Config.slingMinCharge;
+        LizardPlayer slingHolder; bool slingAnnounced;
+
+        LizardPlayer FindHolder()
+        {
+            foreach (var other in LizardPlayer.All)
+                if (other && other != p && other.Tongue && other.Tongue.HeldPartner == p) return other;
+            return null;
+        }
+
+        void UpdateSling(float dt)
+        {
+            var cfg = p.Config;
+            bool anchored = State == TongueState.Attached && mode == Mode.Anchor;
+            var holder = anchored ? FindHolder() : null;
+            if (holder)
+            {
+                slingHolder = holder;
+                // La liga son las dos lenguas: cuenta la más estirada (la del compañero también llega por red).
+                float goal = Mathf.Max(Tension01, holder.Tongue.CatapultCharge * 0.95f);
+                float rate = goal > SlingCharge ? cfg.slingChargeRate : cfg.slingChargeRate * 2f;
+                SlingCharge = Mathf.MoveTowards(SlingCharge, goal, rate * dt);
+                if (SlingReady && !slingAnnounced) { slingAnnounced = true; p.Message("¡Honda cargada! Que te suelten (o salta) para salir disparado"); }
+                return;
+            }
+            if (slingHolder)
+            {
+                // El compañero ha soltado: si la liga estaba tensa, disparo.
+                if (anchored && SlingReady) FireSling();
+                slingHolder = null;
+            }
+            SlingCharge = 0f; slingAnnounced = false;
+        }
+
+        void FireSling()
+        {
+            var cfg = p.Config;
+            Vector3 anchor = AttachPoint, from = p.CenterPosition;
+            Vector3 toAnchor = anchor - from;
+            Vector3 flat = Vector3.ProjectOnPlane(toAnchor, Vector3.up);
+            Vector3 dir = flat.sqrMagnitude > 0.01f ? flat.normalized : transform.forward;
+            dir = (dir + Vector3.up * cfg.slingUpRatio + Vector3.up * Mathf.Clamp(toAnchor.normalized.y, 0f, 0.6f)).normalized;
+            float charge = SlingCharge;
+            float speed = cfg.slingMaxSpeed * Mathf.Lerp(0.45f, 1f, Mathf.InverseLerp(cfg.slingMinCharge, 1f, charge));
+            Release(false);                       // la liga se despega del ancla: sales libre
+            State = TongueState.Retracting;
+            rb.linearVelocity = Vector3.ClampMagnitude(dir * speed, cfg.tongueMaxBodySpeed);
+            p.Motor.MarkTugged(0.9f);
+            Sfx.Play(Sfx.Jump, from, 1f);
+            Sfx.Play(Sfx.Stick, anchor, 0.8f);
+            Fx.Burst(from, pink, 16, 4.5f, 0.1f);
+            Fx.Burst(anchor, Color.white, 10, 3f, 0.08f);
+            DustPuffs.Burst(anchor, 0.2f, 9, 2.6f);
+            p.CameraRig?.Shake(0.25f);
+            p.Message("¡HONDA! Sales disparado");
+            SlingCharge = 0f; slingAnnounced = false;
+        }
+
         void FixedUpdate()
         {
             if (NetMirror) return;
             float dt = Time.fixedDeltaTime; var cfg = p.Config;
+            UpdateSling(dt);
             switch (State)
             {
                 case TongueState.Extending:

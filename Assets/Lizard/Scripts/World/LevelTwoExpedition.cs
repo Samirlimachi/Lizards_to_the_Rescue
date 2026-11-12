@@ -6,6 +6,11 @@ using UnityEngine.UI;
 
 namespace Lizards
 {
+    /// <summary>
+    /// Expedición del nivel 2: llenar el bol con la cuota del día y volver en la balsa.
+    /// En multijugador el cliente maestro lleva la cuota y la cuenta atrás; cualquiera puede pedir la salida desde la balsa
+    /// y al terminar todos reciben la recompensa y vuelven juntos al refugio.
+    /// </summary>
     [DefaultExecutionOrder(120)]
     public sealed class LevelTwoExpedition : MonoBehaviour
     {
@@ -22,7 +27,10 @@ namespace Lizards
         public bool Ready=>bowl&&bowl.Delivered+.0001f>=RequiredFood;
         public bool Departing {get;private set;}
         public bool Completed {get;private set;}
+        public float DepartRemaining=>Departing?Mathf.Max(0,departureAt-Time.time):0;
         float departureAt;
+        bool OnlineReplica=>LevelNet.Online&&!LevelNet.Master;
+
         void Start()
         {
             Day=Mathf.Max(1,PlayerPrefs.GetInt("Lizards.ExpeditionDay",1));
@@ -45,13 +53,18 @@ namespace Lizards
                 if(player.Form==LizardForm.Small)player.Rescue("muelle de expedición");
             }
             float distance=boat?Vector3.Distance(player.transform.position,boat.position):float.MaxValue;
-            if(Departing)
+            if(Departing&&!OnlineReplica)
             {
-                if(distance>6){Departing=false;player.Message("Vuelve a la balsa para regresar.");}
-                else if(Time.time>=departureAt)Complete(player);
+                // Solo: hay que quedarse en la balsa. En grupo la balsa espera a todos y sale al acabar la cuenta.
+                if(!LevelNet.Online&&distance>6){Departing=false;player.Message("Vuelve a la balsa para regresar.");}
+                else if(Time.time>=departureAt)
+                {
+                    if(LevelNet.Online){LevelNet.Local.RPC_ExpeditionComplete();}
+                    else Complete(player);
+                }
             }
             if(LizardLobby.Visible||!boat)return;
-            if(distance<5.5f)InteractPrompts.Offer(boat,boat.position+Vector3.up*2,Ready?"Regresar al pantano":"Primero llena el bol de provisiones",distance);
+            if(distance<5.5f)InteractPrompts.Offer(boat,boat.position+Vector3.up*2,Departing?"La balsa sale enseguida…":Ready?"Regresar al pantano":"Primero llena el bol de provisiones",distance);
             if(InteractPrompts.IsActive(boat)&&player.Input.Pressed(player.Input.Interact))TryDepart(player);
         }
         public bool TryDepart(LizardPlayer player)
@@ -59,14 +72,36 @@ namespace Lizards
             if(!Ready){player.Message("Aún faltan provisiones en el bol central.");return false;}
             if(!boat||Vector3.Distance(player.transform.position,boat.position)>5.5f)return false;
             if(Departing||Completed)return true;
-            Departing=true;departureAt=Time.time+3;Sfx.Play(Sfx.Help,boat.position);return true;
+            if(OnlineReplica){LevelNet.Local.RPC_RequestDepart();player.Message("¡Avisando al grupo! La balsa sale enseguida.");return true;}
+            MasterStartDeparture();return true;
+        }
+        /// <summary>Empieza la cuenta atrás (solo, o el maestro en grupo).</summary>
+        public void MasterStartDeparture()
+        {
+            if(Departing||Completed||!Ready)return;
+            Departing=true;departureAt=Time.time+(LevelNet.Online?5:3);Sfx.Play(Sfx.Help,boat?boat.position:transform.position);
+            foreach(var p in LizardPlayer.All)if(p&&p.IsControlled)p.Message(LevelNet.Online?"¡La balsa sale en 5 segundos! Todos vuelven juntos.":"¡Regreso en 3 segundos!");
+        }
+        /// <summary>Estado que manda el maestro.</summary>
+        public void NetApply(int day,float required,bool departing,float remaining)
+        {
+            Day=day;RequiredFood=required;
+            if(departing&&!Departing){Sfx.Play(Sfx.Help,boat?boat.position:transform.position);foreach(var p in LizardPlayer.All)if(p&&p.IsControlled)p.Message("¡La balsa sale en unos segundos! Todos vuelven juntos.");}
+            Departing=departing;departureAt=Time.time+remaining;
+        }
+        /// <summary>Fin de la expedición en grupo: cada cliente cobra lo suyo; el maestro lleva a todos al refugio.</summary>
+        public void NetComplete()
+        {
+            var player=LizardPlayer.All.FirstOrDefault(p=>p&&p.IsControlled);
+            Complete(player);
         }
         void Complete(LizardPlayer player)
         {
             if(Completed)return;Completed=true;
             var pocket=SwampPocket.Ensure();pocket.Coins+=reward;pocket.Save();
             PlayerPrefs.SetInt("Lizards.ExpeditionDay",Day+1);PlayerPrefs.SetInt("Lizards.Level2Done",1);PlayerPrefs.Save();
-            player.Message($"¡Expedición completada! +{reward} monedas");
+            if(player)player.Message($"¡Expedición completada! +{reward} monedas");
+            if(LevelNet.Online&&!LevelNet.Master)return;      // el maestro cambia la escena para todos
             if(Application.CanStreamedLevelBeLoaded("Lobby"))PcFrontEnd.Travel("Lobby");
         }
     }

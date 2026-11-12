@@ -16,6 +16,8 @@ namespace Lizards
         /// <summary>(desde) — al quedarse sin vida.</summary>
         public event System.Action<Vector3> OnDied;
         public bool Dead => health <= 0f;
+        /// <summary>Multijugador: si devuelve true, el daño se reenvía al cliente maestro (que es quien lleva la vida).</summary>
+        public static System.Func<EnemyHealth, float, Vector3, bool> RemoteDamage;
         Renderer[] rends;
         float flashUntil;
         MaterialPropertyBlock mpb;
@@ -26,6 +28,7 @@ namespace Lizards
         public void Damage(float amount, Vector3 from)
         {
             if (health <= 0f) return;
+            if (RemoteDamage != null && RemoteDamage(this, amount, from)) { flashUntil = Time.time + 0.15f; Sfx.Play(Sfx.Hurt, transform.position, 0.5f); return; }
             amount *= damageMultiplier;
             health -= amount;
             OnDamaged?.Invoke(amount, from);

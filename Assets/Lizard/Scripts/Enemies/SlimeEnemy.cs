@@ -99,9 +99,62 @@ namespace Lizards
             State.Hit => "HitReact", State.Dead => "Death", _ => "Idle"
         };
 
+        // ------------------------------------------------------------------ multijugador
+        // El cliente maestro ejecuta la IA; en los demás el slime es una copia que sigue lo que llega por red.
+        bool replica; Vector3 netPos; Quaternion netRot = Quaternion.identity; bool hasNetPose;
+        public int NetState => (int)state;
+        public float NetFrame => Frame;
+        public bool NetHopToPlayer => hopToPlayer;
+        int NetIndex => LevelNet.Instance && health ? LevelNet.Instance.IndexOf(health) : -1;
+
+        public void SetReplica(bool value)
+        {
+            if (replica == value || state == State.Dead) return;
+            replica = value;
+            rb.isKinematic = value;
+            if (!value) { rb.linearVelocity = Vector3.zero; Enter(state, null, Mathf.Min(Frame, 2f)); } // retoma la IA donde estaba
+        }
+
+        public void NetApply(Vector3 pos, float yaw, int netState, float frame, bool toPlayer)
+        {
+            if (!replica || state == State.Dead) return;
+            netPos = pos; netRot = Quaternion.Euler(0, yaw, 0);
+            if (!hasNetPose) { rb.position = pos; rb.rotation = netRot; transform.SetPositionAndRotation(pos, netRot); hasNetPose = true; }
+            var s = (State)netState;
+            if (s != state) { hopToPlayer = toPlayer; Enter(s, null, frame); }
+            else if (Mathf.Abs(Frame - frame) > 6f) stateStart = Time.time - frame / Fps;
+            hopToPlayer = toPlayer;
+        }
+
+        void ReplicaTick()
+        {
+            if (hasNetPose)
+            {
+                rb.MovePosition(Vector3.Lerp(rb.position, netPos, 0.35f));
+                rb.MoveRotation(Quaternion.Slerp(rb.rotation, netRot, 0.35f));
+            }
+            float f = Frame;
+            launched = state == State.Leap && f >= LeapTakeoff;
+            landed = state == State.Leap && f >= LeapImpact;
+            expelled = state == State.Splash && f >= SplashExpel;
+            target = NearestPlayer(out _);
+            UpdateFace(f, target);
+        }
+
+        public void NetImpact(Vector3 pos) { if (replica) ImpactEffects(pos); }
+        public void NetExpel(Vector3 aim, Vector3 forward) { if (replica) ExpelAt(aim, forward); }
+        public void NetDie(Vector3 from)
+        {
+            if (state == State.Dead) return;
+            if (health) health.health = 0f;
+            rb.isKinematic = false;
+            OnDied(from);
+        }
+
         void FixedUpdate()
         {
             if (state == State.Dead) return;
+            if (replica) { ReplicaTick(); return; }
             target = NearestPlayer(out float dist);
             bool sees = target && dist < sightRange && LineOfSight(target);
             bool grounded = IsGrounded();
@@ -251,24 +304,36 @@ namespace Lizards
             stateStart = Time.time - LeapImpact / Fps;
             if (animator) { animator.speed = 1f; animator.Play("AttackLeap", 0, LeapImpact / (float)LeapLen); }
             rb.linearVelocity = new Vector3(0, Mathf.Min(rb.linearVelocity.y, 0), 0);
-            // Único momento del ataque que hace daño.
+            ImpactEffects(transform.position);
+            if (LevelNet.Online && LevelNet.Master && NetIndex >= 0) LevelNet.Local.RPC_SlimeImpact(NetIndex, transform.position);
+        }
+
+        /// <summary>Único momento del salto que hace daño. Cada cliente solo daña a su propio jugador.</summary>
+        void ImpactEffects(Vector3 at)
+        {
             foreach (var p in LizardPlayer.All)
             {
-                if (!p) continue;
-                Vector3 d = p.transform.position - transform.position;
+                if (!p || !p.IsControlled) continue;
+                Vector3 d = p.transform.position - at;
                 if (Flat(d).magnitude <= leapDamageRadius && Mathf.Abs(d.y) < 1.5f)
-                    p.Health.TakeHit(new DamageInfo { type = DamageType.Enemy, sourcePosition = transform.position, knockbackScale = leapKnockback, foodLoss = -1f, source = gameObject });
+                    p.Health.TakeHit(new DamageInfo { type = DamageType.Enemy, sourcePosition = at, knockbackScale = leapKnockback, foodLoss = -1f, source = gameObject });
             }
-            Fx.Burst(transform.position + Vector3.up * 0.1f, new Color(0.7f, 0.95f, 0.25f), 26, 4.5f, 0.12f);
-            Sfx.Play(Sfx.Land, transform.position, 1f);
+            Fx.Burst(at + Vector3.up * 0.1f, new Color(0.7f, 0.95f, 0.25f), 26, 4.5f, 0.12f);
+            Sfx.Play(Sfx.Land, at, 1f);
         }
 
         // ------------------------------------------------------------------ salpicadura de gel
         void Expel()
         {
             if (!target) return;
-            Vector3 from = mouth ? mouth.position : transform.position + Vector3.up * 0.55f + transform.forward * 0.45f;
             Vector3 aim = target.transform.position; Vector3 fwd = Flat(aim - transform.position).normalized; if (fwd.sqrMagnitude < 0.01f) fwd = transform.forward;
+            ExpelAt(aim, fwd);
+            if (LevelNet.Online && LevelNet.Master && NetIndex >= 0) LevelNet.Local.RPC_SlimeExpel(NetIndex, aim, fwd);
+        }
+
+        void ExpelAt(Vector3 aim, Vector3 fwd)
+        {
+            Vector3 from = mouth ? mouth.position : transform.position + Vector3.up * 0.55f + transform.forward * 0.45f;
             Vector3 side = Vector3.Cross(Vector3.up, fwd);
             // Abanico de tres gotas: una al jugador y dos a los lados para cerrarle el paso.
             for (int i = -1; i <= 1; i++)

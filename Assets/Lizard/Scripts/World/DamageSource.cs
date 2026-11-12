@@ -22,6 +22,7 @@ namespace Lizards
             if (!enabledDamage) return;
             var p = c.GetComponentInParent<LizardPlayer>();
             if (!p) return;
+            var net = p.GetComponent<LizardNetSync>(); if (net && net.Object && !net.IsLocal) return; // copia de otro jugador
             // El intervalo de invulnerabilidad del jugador evita daño repetido por segundo.
             p.Health.TakeHit(new DamageInfo { type = type, sourcePosition = transform.position, knockbackScale = knockbackScale, foodLoss = foodLoss, source = gameObject });
         }

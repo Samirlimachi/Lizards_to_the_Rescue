@@ -10,7 +10,10 @@ namespace Lizards
     public sealed class SharedFoodSync : MonoBehaviour
     {
         public string id;
-        [Range(0,6)] public int variant;
+        [Tooltip("0–6: salteña y sus trozos. 100+: comida del registro NetFood (Resources/NetFood).")] public int variant;
+        /// <summary>Comida compartida de los niveles: variant = 100 + índice (prefab en Resources/NetFood).</summary>
+        public static readonly string[] NetFoodKinds={"Apple","Banana","Corn","Broccoli","Avocado","Pepper"};
+        public static bool ValidVariant(int v)=>(v>=0&&v<=6)||(v>=100&&v<100+NetFoodKinds.Length);
         public static readonly Dictionary<string,SharedFoodSync> Live=new();
         public static readonly HashSet<string> Removed=new();
         public static LizardNetSync Local=>LizardNetSync.All.FirstOrDefault(n=>n&&n.Object&&n.IsLocal&&n.Runner&&n.Runner.IsRunning);
@@ -94,8 +97,9 @@ namespace Lizards
         {
             if(Removed.Contains(key))return null;
             var existing=Find(key);if(existing){existing.Pose(p,q,velocity);return existing;}
-            string name=variant==0?"Saltena_Whole":"Saltena_Piece_"+variant.ToString("00");
-            var prefab=Resources.Load<FoodItem>("Saltena/"+name);if(!prefab)return null;
+            if(!ValidVariant(variant))return null;
+            string path=variant>=100?"NetFood/"+NetFoodKinds[variant-100]:"Saltena/"+(variant==0?"Saltena_Whole":"Saltena_Piece_"+variant.ToString("00"));
+            var prefab=Resources.Load<FoodItem>(path);if(!prefab)return null;
             var food=Instantiate(prefab,p,q);var sync=food.GetComponent<SharedFoodSync>();sync.Bind(key);food.nutrition=value;food.Body.mass=mass;
             food.MarkEjected(null,.2f,0);if(Master)food.Body.linearVelocity=velocity;else{food.Body.isKinematic=true;sync.Pose(p,q,velocity);}return sync;
         }
