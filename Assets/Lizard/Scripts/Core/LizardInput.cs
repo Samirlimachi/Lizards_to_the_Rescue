@@ -154,13 +154,15 @@ namespace Lizards
             Launch = map.AddAction("Lanzar compañero", InputActionType.Button, "<Keyboard>/q");
             Launch.AddBinding("<Gamepad>/dpad/down");
 
-            Interact = map.AddAction("Comer/Interactuar", InputActionType.Button, "<Keyboard>/e");
+            // E: solo interactuar (abrir cajas, balsa, tienda…). Comer se hace con la lengua.
+            Interact = map.AddAction("Interactuar", InputActionType.Button, "<Keyboard>/e");
             Interact.AddBinding("<Gamepad>/buttonWest");
 
-            Eject = map.AddAction("Expulsar/Alimentar", InputActionType.Button, "<Keyboard>/g");
-            Eject.AddBinding("<Gamepad>/buttonNorth");
+            // Ya sin tecla: escupir comida y alimentar pasaron al clic derecho (acción Acid).
+            Eject = map.AddAction("Expulsar (sin uso)", InputActionType.Button);
 
-            Acid = map.AddAction("Escupir ácido", InputActionType.Button, "<Mouse>/rightButton");
+            // Clic derecho: escupe la comida tragada (la última primero) o alimenta a un renacuajo; vacío, escupe ácido.
+            Acid = map.AddAction("Escupir (comida o ácido)", InputActionType.Button, "<Mouse>/rightButton");
             Acid.AddBinding("<Gamepad>/leftTrigger");
 
             Help = map.AddAction("Pedir ayuda", InputActionType.Button, "<Keyboard>/h");
@@ -170,7 +172,7 @@ namespace Lizards
             Slide.AddBinding("<Keyboard>/leftCtrl");
             Slide.AddBinding("<Gamepad>/buttonEast");
 
-            Rebindable = new[] { Move, Jump, Tongue, Reel, Launch, Sprint, Interact, Eject, Acid, Help, Slide };
+            Rebindable = new[] { Move, Jump, Tongue, Reel, Launch, Sprint, Interact, Acid, Help, Slide };
         }
 
         // ---- Lectura (neutra si no hay control) ----

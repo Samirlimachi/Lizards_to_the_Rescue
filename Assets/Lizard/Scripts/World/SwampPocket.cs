@@ -25,13 +25,26 @@ namespace Lizards
             if(item>=6){buff.Apply(item);p.Message("Usado: "+SwampLobbyExpansion.Names[item]);return;}
             if(item==3){buff.bagUntil=Time.time+12;p.Message("Bolsa abierta: caída lenta durante 12 segundos.");return;}
             if(item==4){var shot=new GameObject("Selfie en dos segundos").AddComponent<SwampSelfie>();p.Message("Foto en dos segundos…");return;}
-            var obj=GameObject.CreatePrimitive(item==5?PrimitiveType.Cylinder:PrimitiveType.Sphere);obj.name=SwampLobbyExpansion.Names[item];obj.transform.position=p.transform.position+p.transform.forward*2+Vector3.up*.8f;
+            Vector3 pos=p.transform.position+p.transform.forward*2+Vector3.up*.8f;
+            Vector3 vel=item==0?(Camera.main?Camera.main.transform.forward:p.transform.forward)*18:item==1?p.transform.forward*8+Vector3.up*4:Vector3.zero;
+            SpawnToy(item,pos,vel,false);
+            // En sala, los demás ven el juguete (copia sin daño: el daño lo hace solo la copia de quien lo lanzó).
+            if(SharedFoodSync.Online)SharedFoodSync.Local.RPC_ToySpawn(item,pos,vel);
+        }
+
+        /// <summary>Crea un juguete (pelota, granada, rana, cama elástica). 'cosmetic' = copia llegada por red.</summary>
+        public static GameObject SpawnToy(int item,Vector3 pos,Vector3 vel,bool cosmetic)
+        {
+            if(item<0||item==3||item==4||item>5)return null;
+            var obj=GameObject.CreatePrimitive(item==5?PrimitiveType.Cylinder:PrimitiveType.Sphere);obj.name=SwampLobbyExpansion.Names[item];obj.transform.position=pos;
             obj.transform.localScale=item==5?new Vector3(2.4f,.15f,2.4f):item==2?new Vector3(1.4f,1.8f,1.2f):Vector3.one*.5f;obj.GetComponent<Renderer>().material=LizardMaterials.Lit(item==1?new Color(.3f,.45f,.16f):item==2?new Color(.3f,.8f,.2f):new Color(.65f,.25f,.85f),.4f);
             var rb=obj.AddComponent<Rigidbody>();rb.mass=item==5?8:1;rb.collisionDetectionMode=CollisionDetectionMode.ContinuousDynamic;obj.AddComponent<TongueTarget>().kind=TongueTargetKind.Object;
-            if(item==0){var mat=new PhysicsMaterial("Rebote"){bounciness=.95f,bounceCombine=PhysicsMaterialCombine.Maximum};obj.GetComponent<Collider>().material=mat;rb.linearVelocity=(Camera.main?Camera.main.transform.forward:p.transform.forward)*18;obj.AddComponent<SwampToy>().kind=0;}
-            if(item==1){rb.linearVelocity=p.transform.forward*8+Vector3.up*4;obj.AddComponent<SwampToy>().kind=1;}
-            if(item==2){obj.AddComponent<SwampToy>().kind=2;foreach(float x in new[]{-.35f,.35f}){var eye=GameObject.CreatePrimitive(PrimitiveType.Sphere);eye.transform.SetParent(obj.transform,false);eye.transform.localPosition=new Vector3(x,.45f,.35f);eye.transform.localScale=Vector3.one*.25f;Destroy(eye.GetComponent<Collider>());eye.GetComponent<Renderer>().material=LizardMaterials.Lit(Color.white,.1f);}}
+            if(item==0){var mat=new PhysicsMaterial("Rebote"){bounciness=.95f,bounceCombine=PhysicsMaterialCombine.Maximum};obj.GetComponent<Collider>().material=mat;obj.AddComponent<SwampToy>().kind=0;}
+            if(item==1){obj.AddComponent<SwampToy>().kind=1;}
+            if(item==2){obj.AddComponent<SwampToy>().kind=2;foreach(float x in new[]{-.35f,.35f}){var eye=GameObject.CreatePrimitive(PrimitiveType.Sphere);eye.transform.SetParent(obj.transform,false);eye.transform.localPosition=new Vector3(x,.45f,.35f);eye.transform.localScale=Vector3.one*.25f;UnityEngine.Object.Destroy(eye.GetComponent<Collider>());eye.GetComponent<Renderer>().material=LizardMaterials.Lit(Color.white,.1f);}}
             if(item==5){rb.constraints=RigidbodyConstraints.FreezeRotationX|RigidbodyConstraints.FreezeRotationZ;obj.AddComponent<SwampBounce>();}
+            rb.linearVelocity=vel;var toy=obj.GetComponent<SwampToy>();if(toy)toy.cosmetic=cosmetic;
+            return obj;
         }
     }
 }

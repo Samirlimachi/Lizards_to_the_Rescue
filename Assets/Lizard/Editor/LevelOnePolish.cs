@@ -128,7 +128,7 @@ namespace Lizards.EditorTools
                 Vector3 p = f.transform.position; float v = f.nutrition, s = f.size; string n = f.name;
                 Object.DestroyImmediate(f.gameObject);
                 var nf = s > 0.4f ? FoodFactory.CreateBig(p, v, s) : FoodFactory.CreateFruit(p, v, s);
-                nf.name = s > 0.4f ? "Sandía · arrástrala al depósito" : "Manzana · comer [E]"; nf.transform.SetParent(root, true);
+                nf.name = s > 0.4f ? "Sandía · arrástrala al depósito" : "Manzana · cómela con la lengua"; nf.transform.SetParent(root, true);
                 food++;
             }
             log.Add($"{food} comidas");

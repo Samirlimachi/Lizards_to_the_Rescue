@@ -80,9 +80,13 @@ namespace Lizards
             Acid.Refill();
         }
 
+        /// <summary>Carga del lanzamiento de comida (ya no hay lanzamiento cargado: escupir es con clic derecho).</summary>
+        public float ThrowCharge => 0f;
+
         void Update()
         {
             if (transform.position.y < Config.killY) Respawn();
+
 
             // Mientras está abierta la pantalla de sala no se controla al personaje (se está escribiendo).
             if (IsControlled && LizardLobby.Visible) { Motor.MoveInput = Vector3.zero; return; }
@@ -124,9 +128,9 @@ namespace Lizards
             Tongue.ReelInput = Input.ReelValue;
             if (Input.Pressed(Input.Launch)) Tongue.TryCatapult();
 
-            if (Input.Pressed(Input.Acid)) Acid.TryFire();
-            if (Input.Pressed(Input.Interact)) EatOrInteract();
-            if (Input.Pressed(Input.Eject)) EjectOrFeed();
+            // Comer solo con la lengua (traga sola la comida que llega a la boca): E ya no come, solo interactúa.
+            // Clic derecho: primero escupe lo tragado (lo último primero) y, con el estómago vacío, el moco de ácido.
+            if (Input.Pressed(Input.Acid)) SpitOrAcid();
             if (Input.Pressed(Input.Help)) CallHelp();
             if (Input.Pressed(Input.Slide)) Motor.TryStartSlide();
         }
@@ -172,10 +176,11 @@ namespace Lizards
             if (Stomach.Food >= Config.maxFood - 0.001f) { Message("¡Estás lleno!"); return false; }
             if (!f.FitsMouth(Stats.mouthCapacity)) { Message("Demasiado grande para tragar"); return false; }
             var sharedFood=f.GetComponent<SharedFoodSync>();
-            if(sharedFood&&SharedFoodSync.Online&&!sharedFood.ApprovedEat)return sharedFood.RequestEat(this);
+            if(sharedFood&&SharedFoodSync.Online&&!sharedFood.ApprovedEat)
+                return GetComponent<LizardNetSync>() ? sharedFood.RequestEat(this) : SharedFoodSync.NpcEat(this, f);   // NPC (Pip): come en el maestro
             if (Tongue.HeldFood == f) Tongue.Release(false);
             if (!Stomach.TryConsumeFood(f)) return false;
-            Visual?.PlayGulp();
+            Visual?.PlayGulp(); LizardNetSync.SendGesture(this, 0);
             Sfx.Play(Sfx.Eat, MouthPosition);
             EvaluateForm();
             return true;
@@ -193,6 +198,42 @@ namespace Lizards
             return best;
         }
 
+        /// <summary>
+        /// Clic derecho. Por orden:
+        ///  1. Comida grande llevada en la boca → la suelta.
+        ///  2. Comida tragada → si hay un compañero renacuajo cerca, se la da; si no, escupe la última que tragó
+        ///     (y así sucesivamente, de la más reciente a la más antigua) hacia donde apunta la mira.
+        ///  3. Estómago vacío → escupitajo de ácido.
+        /// </summary>
+        public void SpitOrAcid()
+        {
+            if (MouthBusy) return;
+            if (Tongue.CarriedInMouth) { EjectOrFeed(); return; }
+            if (Stats.canEject && Stomach.Food > 0.001f)
+            {
+                if (FindSmallPartner()) { EjectOrFeed(); return; }
+                SpitFood(9f);
+                return;
+            }
+            Acid.TryFire();
+        }
+
+        void SpitFood(float speed)
+        {
+            // Apunta como el ácido: al punto de la mira, con un pequeño arco.
+            Transform cam = CameraRig ? CameraRig.CameraTransform : (Camera.main ? Camera.main.transform : null);
+            Vector3 aim = Tongue && Tongue.AimHasHit ? Tongue.AimPoint : cam ? cam.position + cam.forward * 20f : MouthPosition + transform.forward * 10f;
+            Vector3 dir = (aim - MouthPosition).normalized;
+            if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
+            dir = (dir + Vector3.up * 0.15f).normalized;
+            Motor.FaceTowards(aim, 0.3f);
+            Stomach.EjectLastFood(dir, speed, 0f);
+            Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
+            Sfx.Play(Sfx.Eject, MouthPosition);
+            SetMouthBusy(0.3f);
+            EvaluateForm();
+        }
+
         public void EjectOrFeed()
         {
             if (!Stats.canEject) { Message("En este estado no puedes expulsar comida"); return; }
@@ -202,8 +243,64 @@ namespace Lizards
             if (Tongue.CarriedInMouth && !(partner && held && held.FitsMouth(partner.Stats.mouthCapacity)))
             {
                 Tongue.Release(true);
-                Visual?.PlayEject();
+                Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
                 Message("Has soltado la comida");
+                return;
+            }
+
+            // Compañero de otro jugador (copia de red): la comida tiene que llegar a su cuerpo real, en su cliente.
+            var partnerNet = partner ? partner.GetComponent<LizardNetSync>() : null;
+            bool remotePartner = partnerNet && partnerNet.Object && !partnerNet.IsLocal;
+
+            // Compañero NPC (Pip) en sala y no somos el maestro: el maestro lleva su comida y su forma.
+            int npcIndex = partner && !partnerNet && SharedFoodSync.Online && !SharedFoodSync.Master && LevelNet.Instance ? LevelNet.Instance.NpcIndex(partner) : -1;
+            if (npcIndex >= 0)
+            {
+                var heldSync = held ? held.GetComponent<SharedFoodSync>() : null;
+                if (heldSync && held.FitsMouth(partner.Stats.mouthCapacity))
+                {
+                    Tongue.Release(false);
+                    SharedFoodSync.Local.RPC_FeedNpcHeld(npcIndex, heldSync.id);
+                    Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
+                    Message($"Has alimentado a {partner.displayName}");
+                    return;
+                }
+                if (Stomach.Food > 0.001f)
+                {
+                    float room = Mathf.Max(0f, partner.Config.maxFood - partner.Stomach.Food);
+                    float amount = Stomach.Remove(Mathf.Min(Config.feedAmount, room), "alimentar");
+                    if (amount <= 0f) { Message($"{partner.displayName} está lleno"); return; }
+                    SharedFoodSync.Local.RPC_FeedNpc(npcIndex, amount, displayName);
+                    Fx.Burst(Vector3.Lerp(MouthPosition, partner.CenterPosition, 0.5f), new Color(0.8f, 0.95f, 0.4f), 10, 2f, 0.12f);
+                    Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
+                    Sfx.Play(Sfx.Eat, partner.MouthPosition);
+                    SetMouthBusy(0.3f);
+                    Message($"Has alimentado a {partner.displayName}");
+                    EvaluateForm();
+                    return;
+                }
+            }
+            if (remotePartner && held && held.FitsMouth(partner.Stats.mouthCapacity) && held.GetComponent<SharedFoodSync>())
+            {
+                string key = held.GetComponent<SharedFoodSync>().id;
+                Tongue.Release(false);
+                partnerNet.RPC_FeedHeld(key, displayName);
+                Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
+                Message($"Has alimentado a {partner.displayName}");
+                return;
+            }
+            if (remotePartner && Stomach.Food > 0.001f)
+            {
+                float room = Mathf.Max(0f, partner.Config.maxFood - partner.Stomach.Food);
+                float amount = Stomach.Remove(Mathf.Min(Config.feedAmount, room), "alimentar");
+                if (amount <= 0f) { Message($"{partner.displayName} está lleno"); return; }
+                partnerNet.RPC_ReceiveFood(amount, displayName);
+                Fx.Burst(Vector3.Lerp(MouthPosition, partner.CenterPosition, 0.5f), new Color(0.8f, 0.95f, 0.4f), 10, 2f, 0.12f);
+                Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
+                Sfx.Play(Sfx.Eat, partner.MouthPosition);
+                SetMouthBusy(0.3f);
+                Message($"Has alimentado a {partner.displayName}");
+                EvaluateForm();
                 return;
             }
 
@@ -218,7 +315,7 @@ namespace Lizards
                 float amount = Stomach.TransferTo(partner.Stomach, Config.feedAmount);
                 partner.ReceiveFood(amount, this, true);
                 Fx.Burst(Vector3.Lerp(MouthPosition, partner.CenterPosition, 0.5f), new Color(0.8f, 0.95f, 0.4f), 10, 2f, 0.12f);
-                Visual?.PlayEject();
+                Visual?.PlayEject(); LizardNetSync.SendGesture(this, 1);
                 SetMouthBusy(0.3f);
                 Message($"Has alimentado a {partner.displayName}");
                 EvaluateForm();
@@ -226,12 +323,7 @@ namespace Lizards
             }
             if (Stomach.Food > 0.001f)
             {
-                Vector3 dir = (transform.forward + Vector3.up * 0.6f).normalized;
-                Stomach.EjectLastFood(dir, 4f, 0.2f);
-                Visual?.PlayEject();
-                Sfx.Play(Sfx.Eject, MouthPosition);
-                SetMouthBusy(0.3f);
-                EvaluateForm();
+                SpitFood(4f);
                 return;
             }
             Message("No tienes comida que expulsar");
@@ -241,9 +333,20 @@ namespace Lizards
         {
             if (amount <= 0f) return;
             if (!alreadyStored) Stomach.Add(amount, from ? "alimentado por " + from.displayName : "alimentado");
-            Visual?.PlayGulp();
+            Visual?.PlayGulp(); LizardNetSync.SendGesture(this, 0);
             Sfx.Play(Sfx.Eat, MouthPosition);
             Message(from ? $"{from.displayName} te ha alimentado" : "Te han alimentado");
+            EvaluateForm();
+        }
+
+        /// <summary>Alimentado por un jugador de otro cliente (llega por red con su nombre).</summary>
+        public void ReceiveFood(float amount, string fromName)
+        {
+            if (amount <= 0f) return;
+            Stomach.Add(amount, "alimentado por " + fromName);
+            Visual?.PlayGulp(); LizardNetSync.SendGesture(this, 0);
+            Sfx.Play(Sfx.Eat, MouthPosition);
+            Message($"{fromName} te ha alimentado");
             EvaluateForm();
         }
 

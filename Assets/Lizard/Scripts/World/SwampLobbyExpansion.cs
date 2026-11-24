@@ -55,7 +55,13 @@ namespace Lizards
                 if(p.Input.Pressed(p.Input.Interact))Buy(p);
             }
             // La ruleta de color la gestiona ColorWheelStation (vista previa, confirmar, lamer muestras).
-            else if(InteractPrompts.IsActive(bell)&&p.Input.Pressed(p.Input.Interact)){Sfx.Play(Sfx.Help,bell.position);var swing=FindAnyObjectByType<BellSwing>();if(swing)swing.Ring();Fx.Burst(bell.position,Color.yellow,10,2,.06f);p.Message("¡Ding! La tienda está abierta. Entra para probar sombreros.");}
+            else if(InteractPrompts.IsActive(bell)&&p.Input.Pressed(p.Input.Interact)){RingBell(p);if(SharedFoodSync.Online)SharedFoodSync.Local.RPC_BellRing();}
+        }
+        /// <summary>Suena la campana (la toca el jugador local, o llega por red con p = null).</summary>
+        public void RingBell(LizardPlayer p)
+        {
+            Sfx.Play(Sfx.Help,bell.position);var swing=FindAnyObjectByType<BellSwing>();if(swing)swing.Ring();Fx.Burst(bell.position,Color.yellow,10,2,.06f);
+            if(p)p.Message("¡Ding! La tienda está abierta. Entra para probar sombreros.");
         }
     }
 

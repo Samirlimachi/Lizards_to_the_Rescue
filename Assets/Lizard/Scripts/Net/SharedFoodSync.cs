@@ -85,6 +85,21 @@ namespace Lizards
             Object.Destroy(sync.gameObject);sync.gameObject.SetActive(false);
         }
         public void Reserve()=>Reserved=true;
+        /// <summary>
+        /// Un NPC (Pip) se come comida compartida. Solo el maestro lo decide: la borra para todos y suma la comida al NPC
+        /// (su forma y comida llegan a los demás con RPC_NpcState).
+        /// </summary>
+        public static bool NpcEat(LizardPlayer npc,FoodItem f)
+        {
+            if(!Master||!npc||!f)return false;
+            var sync=f.GetComponent<SharedFoodSync>();if(!sync||sync.Reserved)return false;
+            if(!f.FitsMouth(npc.Stats.mouthCapacity)||npc.Stomach.Food>=npc.Config.maxFood-0.001f)return false;
+            float value=f.nutrition;sync.Reserve();
+            foreach(var p in LizardPlayer.All)if(p&&p.Tongue&&p.Tongue.HeldFood==f)p.Tongue.Release(false);
+            Local.RPC_FoodEatGranted(sync.id,default);   // nadie la come: se borra en todos los clientes
+            npc.ReceiveFood(value,(LizardPlayer)null);
+            return true;
+        }
         public static void Delete(string key)
         {Removed.Add(key);var f=Find(key);if(f){f.gameObject.SetActive(false);Object.Destroy(f.gameObject);}}
         public static void AnnounceSpit(FoodItem food,LizardPlayer owner)

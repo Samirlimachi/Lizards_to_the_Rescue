@@ -48,6 +48,9 @@ namespace Lizards.EditorTools
             imp.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
             imp.importAnimation = true; imp.importBlendShapes = false; imp.importCameras = false; imp.importLights = false;
             imp.materialImportMode = ModelImporterMaterialImportMode.None;
+            // SlimeRagdoll copia la malla al morir y quita los triángulos que unen tapa y cuerpo:
+            // sin Read/Write no puede leerlos en Play/compilación y la tapa estira toda la malla al salir volando.
+            imp.isReadable = true;
             imp.animationCompression = ModelImporterAnimationCompression.KeyframeReduction;
             imp.resampleCurves = true;
             var defaults = imp.defaultClipAnimations;

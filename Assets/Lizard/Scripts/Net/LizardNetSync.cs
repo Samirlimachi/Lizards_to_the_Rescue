@@ -26,6 +26,17 @@ namespace Lizards
         [Networked] public float TongueTensionNet { get; set; }
         [Networked] public float TongueChargeNet { get; set; }
         [Networked] public NetworkId TonguePartnerNet { get; set; }
+        // Movimiento para animar las copias: velocidad real y suelo/nado/correr/deslizar (bits 0–3).
+        [Networked] public Vector3 VelocityNet { get; set; }
+        [Networked] public int MotionFlagsNet { get; set; }
+        // Personalización: color de piel (RGBA empaquetado; alfa 0 = sin tinte) y sombrero (índice de SwampHatFactory).
+        [Networked] public int SkinNet { get; set; }
+        [Networked] public int HatNet { get; set; }
+        int appliedSkin = -1, appliedHat = -1;
+        SunnyVisual sunny;
+
+        static int PackColor(Color c) { Color32 k = c; return k.r | (k.g << 8) | (k.b << 16) | (255 << 24); }
+        static Color UnpackColor(int v) => new Color32((byte)(v & 255), (byte)((v >> 8) & 255), (byte)((v >> 16) & 255), 255);
 
         LizardPlayer player;
         int appliedForm = -1;
@@ -43,6 +54,14 @@ namespace Lizards
             {
                 PlayerName = string.IsNullOrWhiteSpace(PendingLocalName) ? "Jugador" : PendingLocalName.Trim();
                 if (input) input.controlled = true;
+                // Nuestro lagarto de red lleva el color y el sombrero que elegimos (se guardan en PlayerPrefs).
+                if (player)
+                {
+                    var sv = GetComponentInChildren<SunnyVisual>();
+                    if (sv && ColorWheelStation.TryLoad(out var skin)) sv.SetSkinColor(skin);
+                    int hat = SwampHatFactory.Load();
+                    if (hat > 0 && SwampHatFactory.Current(player) != hat) SwampHatFactory.Equip(player, hat, true);
+                }
                 var rig = FindAnyObjectByType<LizardCameraRig>();
                 if (rig && player) rig.SetTarget(player);
             }
@@ -92,6 +111,23 @@ namespace Lizards
             player.Message("¡Te han catapultado!");
         }
 
+        /// <summary>Otro jugador nos alimenta desde su estómago: la comida entra en nuestro cuerpo real (no en su copia).</summary>
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        public void RPC_ReceiveFood(float amount, string fromName)
+        {
+            if (!player || amount <= 0f) return;
+            player.ReceiveFood(Mathf.Min(amount, player.Config.maxFood), fromName);
+        }
+
+        /// <summary>Otro jugador nos da la comida que sujetaba con la lengua: la pedimos al maestro para tragarla.</summary>
+        [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+        public void RPC_FeedHeld(string foodKey, string fromName)
+        {
+            if (!player) return;
+            var sync = SharedFoodSync.Find(foodKey);
+            if (sync && player.TryEat(sync.GetComponent<FoodItem>())) player.Message($"{fromName} te ha dado comida");
+        }
+
         /// <summary>
         /// Si un jugador remoto nos sujeta con la lengua, el tirón lo resolvemos aquí, sobre nuestro propio cuerpo
         /// (así cada cuerpo tiene una sola autoridad y no se aplican fuerzas duplicadas).
@@ -132,6 +168,15 @@ namespace Lizards
             if (!HasStateAuthority || !player) return;
             FormNet = (int)player.Form;
             FoodNet = player.Stomach.Food;
+            if (!sunny) sunny = GetComponentInChildren<SunnyVisual>();
+            SkinNet = sunny && sunny.HasSkinTint ? PackColor(sunny.SkinColor) : 0;
+            HatNet = SwampHatFactory.Current(player);
+            var m = player.Motor;
+            if (m)
+            {
+                VelocityNet = player.Body.linearVelocity;
+                MotionFlagsNet = (m.Grounded ? 1 : 0) | (m.Swimming ? 2 : 0) | (m.Sprinting ? 4 : 0) | (m.Sliding ? 8 : 0);
+            }
             var t = player.Tongue;
             if (t)
             {
@@ -160,6 +205,20 @@ namespace Lizards
                 player.Visual?.OnFormChanged(player.Form, (LizardForm)FormNet, true);
             }
             player.Stomach.DebugSetFood(FoodNet);
+            // Color y sombrero que eligió el otro jugador (fuente, ruleta, probador).
+            if (!sunny) sunny = GetComponentInChildren<SunnyVisual>();
+            if (sunny && appliedSkin != SkinNet)
+            {
+                appliedSkin = SkinNet;
+                if (SkinNet == 0) sunny.ClearSkinColor(); else sunny.SetSkinColor(UnpackColor(SkinNet));
+            }
+            if (appliedHat != HatNet)
+            {
+                appliedHat = HatNet;
+                SwampHatFactory.Equip(player, HatNet, true);
+            }
+            int mf = MotionFlagsNet;
+            player.Motor.SetNetState(VelocityNet, (mf & 1) != 0, (mf & 2) != 0, (mf & 4) != 0, (mf & 8) != 0);
             if (player.Tongue)
                 player.Tongue.SetFromNetwork((TongueState)TongueStateNet, TongueTipNet, TongueLengthNet, TongueTensionNet, TongueChargeNet,
                     PlayerFromId(Runner, TonguePartnerNet));

@@ -6,7 +6,8 @@ namespace Lizards
     /// <summary>Interfaz provisional (IMGUI): reservas, estado, objetivo de lengua, indicaciones y menú de controles.</summary>
     public class LizardHUD : MonoBehaviour
     {
-        Vector2 reticle; float reticleSize = 20f;
+        Texture2D aimReticle;
+        float focus;
         public LizardCameraRig rig;
         static bool legacyMenuOpen;
         public static bool MenuOpen => legacyMenuOpen || PcFrontEnd.GameplayMenuOpen;
@@ -21,6 +22,8 @@ namespace Lizards
 
         void Update()
         {
+            float targetFocus = P && P.Tongue && P.Tongue.AimValid && P.ThrowCharge == 0f ? 1f : 0f;
+            focus = Mathf.MoveTowards(focus, targetFocus, Time.unscaledDeltaTime * 8f);
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (kb != null && kb.tabKey.wasPressedThisFrame && !PcFrontEnd.GameplayMenuOpen)
             {
@@ -35,6 +38,7 @@ namespace Lizards
         {
             if (label != null) return;
             white = Texture2D.whiteTexture;
+            aimReticle = Resources.Load<Texture2D>("LizardAimReticle");
             label = new GUIStyle(GUI.skin.label) { fontSize = 15, richText = true };
             label.normal.textColor = Color.white;
             big = new GUIStyle(label) { fontSize = 20, fontStyle = FontStyle.Bold };
@@ -76,24 +80,30 @@ namespace Lizards
             Bar(new Rect(x, y, w, 16), p.Acid.Ammo / cfg.maxAcid, new Color(0.45f, 1f, 0.2f), $"Ácido {p.Acid.Ammo:0.0}/{cfg.maxAcid:0}{acidState}"); y += 22;
             if (p.Health.Invulnerable) { GUI.Label(new Rect(x, y, w, 20), $"Protección tras golpe: {p.Health.InvulnerableRemaining:0.0}s", small); }
 
-            // ---- Mira y objetivo de lengua ----
             var t = p.Tongue;
-            Vector2 c = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            // Mira: anillo con punto que se posa sobre lo que apuntas (sigue el punto con suavidad) y se hace más grande si se puede agarrar.
-            Color cross = !p.Stats.tongueEnabled ? Color.gray : t.AimValid ? new Color(1f, 0.45f, 0.85f) : t.AimHasHit && t.AimLabel.Length > 0 ? new Color(1f, 0.6f, 0.1f) : Color.white;
-            var camT = p.CameraRig ? p.CameraRig.CameraTransform : (Camera.main ? Camera.main.transform : null);
-            var cam = camT ? camT.GetComponent<Camera>() : null;
-            Vector2 goal = c;
-            if (cam && t.AimHasHit) { Vector3 sp = cam.WorldToScreenPoint(t.AimPoint); if (sp.z > 0f) goal = new Vector2(sp.x, Screen.height - sp.y); }
-            reticle = reticle == Vector2.zero ? goal : Vector2.Lerp(reticle, goal, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 18f));
-            reticleSize = Mathf.Lerp(reticleSize, t.AimValid ? 30f : 20f, 1f - Mathf.Exp(-Time.unscaledDeltaTime * 12f));
-            float rs = reticleSize;
-            GUI.DrawTexture(new Rect(reticle.x - rs / 2 + 1, reticle.y - rs / 2 + 1, rs, rs), white, ScaleMode.StretchToFill, true, 0, new Color(0f, 0f, 0f, 0.35f), 3f, rs / 2);
-            GUI.DrawTexture(new Rect(reticle.x - rs / 2, reticle.y - rs / 2, rs, rs), white, ScaleMode.StretchToFill, true, 0, cross, 3f, rs / 2);
-            GUI.DrawTexture(new Rect(reticle.x - 3, reticle.y - 3, 6, 6), white, ScaleMode.StretchToFill, true, 0, cross, 0, 3f);
-            GUI.color = Color.white;
+            Vector2 c = new Vector2(Screen.width * .5f, Screen.height * .5f);
+            float scale = Mathf.Clamp(Screen.height / 900f, .9f, 2.4f);
+            float size = Mathf.Lerp(20f, 16f, focus) * scale;
+            float charge = p.ThrowCharge;
+            if (!MenuOpen && aimReticle)
+            {
+                Color tint = Color.Lerp(new Color(1f, 1f, 1f, .78f), new Color(.52f, 1f, .80f), focus);
+                if (charge > .15f) tint = new Color(1f, .83f, .48f);
+                GUI.color = tint;
+                GUI.DrawTexture(new Rect(c.x - size / 2, c.y - size / 2, size, size), aimReticle);
+                if (charge > .15f)
+                {
+                    Rect meter = new Rect(c.x - 12 * scale, c.y + 13 * scale, 24 * scale, 2 * scale);
+                    GUI.color = new Color(.08f, .10f, .11f, .65f);
+                    GUI.DrawTexture(meter, white);
+                    meter.width *= charge;
+                    GUI.color = tint;
+                    GUI.DrawTexture(meter, white);
+                }
+                GUI.color = Color.white;
+            }
             string tl = t.State == TongueState.Attached ? $"{t.AttachedLabel}  ·  largo {t.CurrentLength:0.0} m  ·  tensión {t.Tension01 * 100f:0}%"
-                : t.AimLabel.Length > 0 ? $"{t.AimLabel}  ·  {t.AimDistance:0.0}/{p.Stats.tongueRange:0} m" : $"Alcance de la lengua: {p.Stats.tongueRange:0} m";
+                : t.AimHasHit && t.AimLabel.Length > 0 ? $"{t.AimLabel}  ·  {t.AimDistance:0.0}/{p.Stats.tongueRange:0} m" : "";
             if (t.HeldPartner)
             {
                 var other = t.HeldPartner;
@@ -113,8 +123,11 @@ namespace Lizards
                         : $"\n{o.displayName} te sujeta · [{p.Input.Display(p.Input.Jump)}] soltarte";
                     break;
                 }
-            var tsz = label.CalcSize(new GUIContent(tl));
-            GUI.Label(new Rect(reticle.x - tsz.x / 2, reticle.y + 22, tsz.x + 10, tsz.y + 6), tl, label);
+            if (!MenuOpen && tl.Length > 0 && charge <= .15f)
+            {
+                var tsz = small.CalcSize(new GUIContent(tl));
+                GUI.Label(new Rect(c.x - tsz.x / 2, Screen.height - 150, tsz.x + 10, tsz.y + 6), tl, small);
+            }
 
             // ---- Indicaciones contextuales ----
             var input = p.Input;
@@ -123,22 +136,22 @@ namespace Lizards
             if (p.Form == LizardForm.Small)
                 hint = $"Eres un renacuajo: [{input.Display(input.Help)}] pedir ayuda · come algo · o ve al punto de rescate (anillo azul)";
             else if (partner && (p.Stomach.Food > 0 || t.HeldFood))
-                hint = $"[{input.Display(input.Eject)}] Alimentar a {partner.displayName}";
+                hint = $"[{input.Display(input.Acid)}] Alimentar a {partner.displayName}";
             else if (t.HeldFood)
-                hint = t.HeldFood.FitsMouth(p.Stats.mouthCapacity) ? $"[{input.Display(input.Interact)}] Tragar" : "Comida grande: arrástrala o llévala a la meta";
+                hint = t.HeldFood.FitsMouth(p.Stats.mouthCapacity) ? "Acércala a la boca para tragarla" : "Comida grande: arrástrala o llévala a la meta";
             else if (t.HeldPartner)
                 hint = "Suelta la lengua con el compañero cerca para lanzarlo";
             else
             {
                 var f = p.FindNearestFood(out bool fits);
-                if (f) hint = fits ? $"[{input.Display(input.Interact)}] Comer" : "Demasiado grande para tragar: usa la lengua para arrastrarla";
+                if (f) hint = fits ? $"[{input.Display(input.Tongue)}] Cómela con la lengua" : "Demasiado grande para tragar: usa la lengua para arrastrarla";
             }
             foreach (var other in LizardPlayer.All)
                 if (other != p && other.IsRequestingHelp)
                 {
                     Vector3 sp = rig.CameraTransform.GetComponent<Camera>().WorldToScreenPoint(other.CenterPosition + Vector3.up);
                     if (sp.z > 0) { GUI.color = new Color(0.4f, 0.9f, 1f); GUI.Label(new Rect(sp.x - 60, Screen.height - sp.y - 30, 200, 24), "¡AYUDA!", big); GUI.color = Color.white; }
-                    hint = $"{other.displayName} pide ayuda: agárralo con la lengua o dale comida [{input.Display(input.Eject)}]";
+                    hint = $"{other.displayName} pide ayuda: agárralo con la lengua o dale comida [{input.Display(input.Acid)}]";
                 }
             if (hint.Length > 0)
             {

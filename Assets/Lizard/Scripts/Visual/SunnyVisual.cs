@@ -173,9 +173,10 @@ namespace Lizards
             SetupChains();
             SetupBallParts();
             // El jugador local recupera el color de piel que eligió en la ruleta.
-            if (p && p.IsControlled && ColorWheelStation.TryLoad(out var saved)) SetSkinColor(saved);
+            bool mine = p && p.IsControlled && !IsRemoteCopy();
+            if (mine && ColorWheelStation.TryLoad(out var saved)) SetSkinColor(saved);
             // …y el sombrero que eligió en el probador.
-            if (p && p.IsControlled) { int hat = SwampHatFactory.Load(); if (hat > 0) SwampHatFactory.Equip(p, hat, true); }
+            if (mine) { int hat = SwampHatFactory.Load(); if (hat > 0) SwampHatFactory.Equip(p, hat, true); }
             if (p)
             {
                 p.Motor.OnLanded += impact =>
@@ -277,6 +278,22 @@ namespace Lizards
         Renderer[] tintRenderers;
         bool hasSkinTint; Color skinTint = Color.white;
         public Color SkinColor => skinTint;
+        public bool HasSkinTint => hasSkinTint;
+
+        /// <summary>Lagarto de otro jugador: su color y sombrero llegan por red, no de nuestras preferencias.</summary>
+        bool IsRemoteCopy()
+        {
+            var net = p ? p.GetComponent<LizardNetSync>() : null;
+            return net && net.Object && !net.HasStateAuthority;
+        }
+
+        /// <summary>Vuelve al color original (verde) sin tinte.</summary>
+        public void ClearSkinColor()
+        {
+            skinTint = Color.white; hasSkinTint = false;
+            tintRenderers ??= GetComponentsInChildren<Renderer>(true);
+            foreach (var r in tintRenderers) ApplyTint(r, false);
+        }
 
         /// <summary>
         /// Cambia el color de piel de todo el personaje (cuerpo, tapa, párpados y bola del gigante con sus bracitos),
@@ -305,7 +322,7 @@ namespace Lizards
         public override void PlayHurt()
         {
             hurtT = 0f; flapVel += 300f;
-            if (p && p.Form != LizardForm.Giant) StartTumble(p.Body.linearVelocity);
+            if (p && p.Form != LizardForm.Giant) StartTumble(p.Motor.Velocity);
         }
 
         /// <summary>Empieza a dar vueltas en el aire en la dirección del empujón.</summary>
@@ -356,7 +373,7 @@ namespace Lizards
             float pop = popT < 0.45f ? 1f + Mathf.Sin(popT / 0.45f * Mathf.PI) * 0.2f : 1f;
             squashVel += (-160f * squash - 14f * squashVel) * dt;
             squash += squashVel * dt;
-            float air = p.Motor.Grounded ? 0f : Mathf.Clamp01(Mathf.Abs(p.Body.linearVelocity.y) / 15f) * squashAmount;
+            float air = p.Motor.Grounded ? 0f : Mathf.Clamp01(Mathf.Abs(p.Motor.Velocity.y) / 15f) * squashAmount;
             float s = Mathf.Clamp(squash - air, -0.35f, 0.35f);
             float sc = scaleNow * pop;
             scalePivot.localScale = new Vector3(sc * widthNow * (1f + s * 0.5f), sc * (1f - s), sc * widthNow * (1f + s * 0.5f));
@@ -404,7 +421,7 @@ namespace Lizards
             UpdateGiantBall(gw, t);
 
             // Piezas blandas de la bola: inercia + movimiento propio al rodar (aletear, pedalear, menear).
-            Vector3 vel = p.Body.linearVelocity;
+            Vector3 vel = p.Motor.Velocity;
             if (dt > 0f) bodyAccel = Vector3.Lerp(bodyAccel, (vel - lastVel) / dt, 1f - Mathf.Exp(-dt * 20f));
             lastVel = vel;
             if (softReady && giantBall && giantBall.gameObject.activeSelf)
@@ -443,7 +460,7 @@ namespace Lizards
             // del centro según lo que avanza, sin deslizar. Al dejar de ser gigante se endereza.
             if (isGiant && giantW > 0.5f)
             {
-                Vector3 v = Vector3.ProjectOnPlane(p.Body.linearVelocity, Vector3.up);
+                Vector3 v = Vector3.ProjectOnPlane(p.Motor.Velocity, Vector3.up);
                 if (v.sqrMagnitude > 0.0025f)
                 {
                     Vector3 axisWorld = Vector3.Cross(Vector3.up, v.normalized);

@@ -22,6 +22,7 @@ namespace Lizards
             foreach (var t in p.GetComponentsInChildren<Transform>(true))
                 if (t && t.name == HatName) { t.gameObject.SetActive(false); Kill(t.gameObject); }
             index = Mathf.Clamp(index, 0, Names.Length - 1);
+            (p.GetComponent<EquippedHat>() ?? p.gameObject.AddComponent<EquippedHat>()).index = index;
             if (index == 0) { if (!silent) p.Message("Sin sombrero"); return null; }
 
             // Ancla: tapa de la cabeza de Sunny (sigue a la boca, a la forma y al rodar). Si no hay, el cuerpo.
@@ -115,6 +116,9 @@ namespace Lizards
             return root;
         }
 
+        /// <summary>Sombrero que lleva puesto ahora el jugador (0 = ninguno).</summary>
+        public static int Current(LizardPlayer p) { var h = p ? p.GetComponent<EquippedHat>() : null; return h ? h.index : 0; }
+
         static void Kill(Object o) { if (!o) return; if (Application.isPlaying) Object.Destroy(o); else Object.DestroyImmediate(o); }
 
         // ---- Mallas sencillas ----
@@ -186,4 +190,11 @@ namespace Lizards
             return m;
         }
     }
+}
+
+namespace Lizards
+{
+    /// <summary>Recuerda qué sombrero lleva el jugador (para mandarlo por red).</summary>
+    [UnityEngine.AddComponentMenu("")]
+    public sealed class EquippedHat : UnityEngine.MonoBehaviour { public int index; }
 }

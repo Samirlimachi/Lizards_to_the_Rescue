@@ -36,6 +36,12 @@ namespace Lizards
         // Registro determinista: el mismo orden en todos los clientes (misma escena, mismas posiciones iniciales).
         readonly List<EnemyHealth> enemies = new();
         readonly List<ExpeditionSupplyCrate> crates = new();
+        // Objetos del mundo: cajas sueltas y contrapesos (física), placas de peso, tablones rompibles y membranas de ácido.
+        readonly List<NetProp> props = new();
+        readonly List<PressurePlate> plates = new();
+        readonly List<Breakable> breakables = new();
+        readonly List<AcidVulnerable> acids = new();
+        float nextPlates;
         readonly HashSet<int> deadEnemies = new();
         bool registered;
         float nextPose, nextState;
@@ -65,8 +71,11 @@ namespace Lizards
             {
                 int index = i; var e = enemies[i];
                 e.OnDied += from => { if (Master) Local.RPC_EnemyDied(index, from); };
+                // Cada golpe que aplica el maestro lo ven todos (destello, número, barra de vida, reacción de la babosa).
+                e.OnDamaged += (amount, from) => { if (Online && Master && e.health > 0f) Local.RPC_EnemyHit(index, amount, from, e.health); };
             }
             for (int i = 0; i < crates.Count; i++) { int index = i; crates[i].OnOpened += () => { if (Online && !applyingRemote) Local.RPC_CrateOpened(index); }; }
+            RegisterWorld();
             registered = true;
             EnemyHealth.RemoteDamage = ForwardDamage;
         }
@@ -80,9 +89,16 @@ namespace Lizards
             bool replica = Online && !Master;
             for (int i = 0; i < enemies.Count; i++)
             {
-                var e = enemies[i]; if (!e) continue;
+                var e = enemies[i]; if (!e || e.Dead) continue;   // muertos: no reactivar su patrulla mientras revientan
                 var slime = e.GetComponent<SlimeEnemy>(); if (slime) slime.SetReplica(replica);
                 var patrol = e.GetComponent<PatrolEnemy>(); if (patrol) SetPatrolReplica(patrol, replica);
+            }
+            foreach (var pl in plates) if (pl) pl.NetReplica = replica;
+            if (Online && Master && Time.time >= nextPlates)
+            {
+                nextPlates = Time.time + 1f;   // repaso periódico por si se perdió algún cambio
+                for (int i = 0; i < plates.Count; i++) if (plates[i]) Local.RPC_PlateState(i, plates[i].Pressed);
+                Local.RPC_Clock(SharedTime);
             }
             if (!Online || !Master) return;
             if (Time.time >= nextPose)
@@ -100,7 +116,38 @@ namespace Lizards
                 nextState = Time.time + 0.5f;
                 var exp = FindAnyObjectByType<LevelTwoExpedition>();
                 if (exp) Local.RPC_ExpeditionState(exp.Day, exp.RequiredFood, exp.Departing, exp.DepartRemaining, FindAnyObjectByType<FoodGoal>()?.Delivered ?? 0f);
+                for (int i = 0; i < npcs.Count; i++) if (npcs[i]) Local.RPC_NpcState(i, (int)npcs[i].Form, npcs[i].Stomach.Food);
             }
+        }
+
+        // ------------------------------------------------------------------ reloj compartido
+        /// <summary>Tiempo igual en todos los clientes (el del maestro): para elevadores y plataformas que se mueven solas.</summary>
+        public static float SharedTime => Time.time + (Instance ? Instance.clockOffset : 0f);
+        float clockOffset; bool hasClock;
+        public void ApplyClock(float masterTime)
+        {
+            float offset = masterTime - Time.time;
+            clockOffset = hasClock && Mathf.Abs(offset - clockOffset) < 1f ? Mathf.Lerp(clockOffset, offset, 0.25f) : offset;
+            hasClock = true;
+        }
+
+        // ------------------------------------------------------------------ compañeros NPC (Pip)
+        readonly List<LizardPlayer> npcs = new();
+        public LizardPlayer Npc(int i) => i >= 0 && i < npcs.Count ? npcs[i] : null;
+        public int NpcIndex(LizardPlayer p) => npcs.IndexOf(p);
+        public void ApplyNpcState(int i, int form, float food)
+        {
+            var npc = Npc(i); if (!npc) return;
+            var f = (LizardForm)form;
+            if (npc.Form != f)
+            {
+                var prev = npc.Form;
+                npc.Forms.ApplyImmediate(f);
+                npc.Visual?.OnFormChanged(prev, f, true);
+                Fx.Burst(npc.CenterPosition, new Color(0.55f, 0.9f, 0.3f), 18, 3f, 0.18f);
+                Sfx.Play(Sfx.Transform, npc.CenterPosition);
+            }
+            npc.Stomach.DebugSetFood(food);
         }
 
         // ------------------------------------------------------------------ jugador local
@@ -112,7 +159,7 @@ namespace Lizards
             while (runner && runner.IsRunning && (runner.IsSceneManagerBusy || !runner.LocalPlayer.IsRealPlayer)) yield return null;
             if (!runner || !runner.IsRunning || !PlayerPrefab || LocalPlayerAlive(runner)) { spawning = null; yield break; }
             // Aparece donde estaba el lagarto local de la escena (la balsa en LEVEL2, el embarcadero en el refugio…).
-            var solo = FindObjectsByType<LizardPlayer>(FindObjectsInactive.Exclude).FirstOrDefault(p => !p.GetComponent<NetworkObject>());
+            var solo = FindObjectsByType<LizardPlayer>(FindObjectsInactive.Exclude).FirstOrDefault(p => !p.GetComponent<NetworkObject>() && p.IsControlled);
             Vector3 point = solo ? solo.transform.position : Vector3.up * 0.5f;
             var lobby = FindAnyObjectByType<LizardLobby>(); if (lobby && !solo) point = lobby.spawnPoint;
             var local = runner.LocalPlayer;
@@ -122,7 +169,7 @@ namespace Lizards
             while (spawned && !spawned.IsValid && Time.realtimeSinceStartup < deadline) yield return null;
             if (spawned && spawned.IsValid) runner.SetPlayerObject(local, spawned);
             foreach (var p in FindObjectsByType<LizardPlayer>(FindObjectsInactive.Exclude))
-                if (!p.GetComponent<NetworkObject>()) p.gameObject.SetActive(false);
+                if (!p.GetComponent<NetworkObject>() && p.IsControlled) p.gameObject.SetActive(false);   // el lagarto local de la escena, no los NPC (Pip)
             spawning = null;
         }
 
@@ -189,7 +236,8 @@ namespace Lizards
             var e = Enemy(i); if (!e || Master) return;
             var slime = e.GetComponent<SlimeEnemy>();
             if (slime) slime.NetDie(from);
-            else { Fx.Burst(e.transform.position, new Color(0.6f, 0.2f, 0.7f), 20, 4f, 0.15f); Sfx.Play(Sfx.Break, e.transform.position); Destroy(e.gameObject); }
+            else if (from == Vector3.zero) Destroy(e.gameObject);   // estado completo al entrar tarde: ya estaba muerto, sin animación
+            else EnemyPoofDeath.Play(e.gameObject, from);
         }
 
         bool applyingRemote;
@@ -206,7 +254,84 @@ namespace Lizards
             for (int i = 0; i < crates.Count; i++) if (crates[i] && crates[i].Opened) Local.RPC_CrateOpened(i);
             foreach (int d in deadEnemies) Local.RPC_EnemyDied(d, Vector3.zero);
             for (int i = 0; i < enemies.Count; i++) if (!enemies[i] && !deadEnemies.Contains(i)) Local.RPC_EnemyDied(i, Vector3.zero);
-            nextPose = nextState = 0f;
+            for (int i = 0; i < plates.Count; i++) if (plates[i]) Local.RPC_PlateState(i, plates[i].Pressed);
+            for (int i = 0; i < breakables.Count; i++) if (!breakables[i] || breakables[i].Broken) Local.RPC_Broken(i, Vector3.zero);
+            var fountain = FindAnyObjectByType<ColorFountain>(); if (fountain) Local.RPC_FountainColor(fountain.Index);
+            for (int i = 0; i < npcs.Count; i++) if (npcs[i]) Local.RPC_NpcState(i, (int)npcs[i].Form, npcs[i].Stomach.Food);
+            Local.RPC_Clock(SharedTime);
+            for (int i = 0; i < acids.Count; i++) { int h = acids[i] ? acids[i].Hits : 99; if (h > 0) Local.RPC_AcidAtLeast(i, h); }
+            for (int i = 0; i < props.Count; i++) if (props[i] && props[i].IsMine) Local.RPC_PropPose(i, props[i].Seq, props[i].Body.position, props[i].Body.rotation, Vector3.zero);
+            nextPose = nextState = nextPlates = 0f;
+        }
+
+        // ------------------------------------------------------------------ objetos del mundo
+        void RegisterWorld()
+        {
+            // Comida de escena sin red (frutas del refugio, manzanas de LEVEL1…): pasa a ser comida compartida con un id
+            // fijo, así cuando alguien se la come desaparece para todos (la física la lleva el maestro).
+            var loose = new List<FoodItem>();
+            foreach (var f in FindObjectsByType<FoodItem>(FindObjectsInactive.Exclude))
+                if (!f.GetComponent<SharedFoodSync>() && f.State != FoodState.Consumed && f.Body) loose.Add(f);
+            loose.Sort((a, b) => Key(a.transform.position).CompareTo(Key(b.transform.position)));
+            string scene = SceneManager.GetActiveScene().name;
+            for (int i = 0; i < loose.Count; i++)
+            {
+                var sync = loose[i].gameObject.AddComponent<SharedFoodSync>();
+                sync.variant = GuessFoodVariant(loose[i].name);
+                sync.Bind($"{scene}-f{i}");
+            }
+
+            // Cuerpos físicos colocados en la escena (no comida, jugadores ni enemigos, que tienen su propia red).
+            var bodies = new List<Rigidbody>();
+            foreach (var b in FindObjectsByType<Rigidbody>(FindObjectsInactive.Include))
+            {
+                if (b.isKinematic || !b.GetComponent<Collider>()) continue;
+                if (b.GetComponent<FoodItem>() || b.GetComponent<EnemyHealth>() || b.GetComponent<NetworkObject>()) continue;
+                var lp = b.GetComponentInParent<LizardPlayer>();
+                if (lp && (lp.IsControlled || lp.GetComponent<LizardNetSync>() || lp.transform != b.transform)) continue;   // solo NPC (Pip) como objeto compartido
+                bodies.Add(b);
+            }
+            bodies.Sort((a, b) => Key(a.transform.position).CompareTo(Key(b.transform.position)));
+            foreach (var b in bodies) { var npc = b.GetComponent<LizardPlayer>(); if (npc) npcs.Add(npc); }
+            foreach (var b in bodies)
+            {
+                var np = b.GetComponent<NetProp>() ?? b.gameObject.AddComponent<NetProp>();
+                np.Index = props.Count; props.Add(np);
+            }
+
+            plates.AddRange(FindObjectsByType<PressurePlate>(FindObjectsInactive.Include));
+            plates.Sort((a, b) => Key(a.transform.position).CompareTo(Key(b.transform.position)));
+            for (int i = 0; i < plates.Count; i++) { int index = i; plates[i].OnPressedChanged += pressed => { if (Online && Master) Local.RPC_PlateState(index, pressed); }; }
+
+            breakables.AddRange(FindObjectsByType<Breakable>(FindObjectsInactive.Include));
+            breakables.Sort((a, b) => Key(a.transform.position).CompareTo(Key(b.transform.position)));
+            for (int i = 0; i < breakables.Count; i++) { int index = i; breakables[i].OnBroken += impulse => { if (Online) Local.RPC_Broken(index, impulse); }; }
+
+            acids.AddRange(FindObjectsByType<AcidVulnerable>(FindObjectsInactive.Include));
+            acids.Sort((a, b) => Key(a.transform.position).CompareTo(Key(b.transform.position)));
+            for (int i = 0; i < acids.Count; i++) { int index = i; acids[i].OnAcidHit += point => { if (Online) Local.RPC_AcidHit(index, point); }; }
+        }
+
+        /// <summary>Qué modelo de Resources/NetFood usar si esta comida se escupe y hay que crearla en los demás clientes.</summary>
+        public static int GuessFoodVariant(string name)
+        {
+            string n = (name ?? "").ToLowerInvariant();
+            if (n.Contains("plát") || n.Contains("plat") || n.Contains("banan")) return 101;
+            if (n.Contains("maíz") || n.Contains("maiz") || n.Contains("choclo") || n.Contains("corn")) return 102;
+            if (n.Contains("brócoli") || n.Contains("brocoli") || n.Contains("brocc")) return 103;
+            if (n.Contains("palta") || n.Contains("aguacate") || n.Contains("avocado")) return 104;
+            if (n.Contains("pimiento") || n.Contains("ají") || n.Contains("pepper")) return 105;
+            return 100;   // manzana
+        }
+
+        public NetProp Prop(int i) => i >= 0 && i < props.Count ? props[i] : null;
+        public void ApplyPlate(int i, bool pressed) { if (i >= 0 && i < plates.Count && plates[i]) plates[i].NetSetPressed(pressed); }
+        public void ApplyBroken(int i, Vector3 impulse) { if (i >= 0 && i < breakables.Count && breakables[i]) breakables[i].NetBreak(impulse); }
+        public void ApplyAcidHit(int i, Vector3 point) { if (i >= 0 && i < acids.Count && acids[i]) acids[i].NetHit(point); }
+        public void ApplyAcidAtLeast(int i, int hits)
+        {
+            if (i < 0 || i >= acids.Count) return;
+            for (int n = 0; n < 8 && acids[i] && acids[i].Hits < hits && acids[i].Hits < acids[i].hitsToDissolve; n++) acids[i].NetHit();
         }
         public void MarkDead(int i) => deadEnemies.Add(i);
     }

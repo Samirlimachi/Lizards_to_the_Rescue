@@ -142,7 +142,7 @@ namespace Lizards
 
             var keyboard = Keyboard.current;
             if (keyboard == null || transitioning || !keyboard.escapeKey.wasPressedThisFrame || bindings.IsRebinding || Time.unscaledTime < ignoreEscapeUntil) return;
-            if (page == Page.None && IsGameplayScene() && !LizardLobby.Visible) Show(Page.Pause);
+            if (page == Page.None && IsGameplayScene() && !LizardLobby.Visible && LizardLobby.ClosedFrame != Time.frameCount) Show(Page.Pause);
             else if (page == Page.Settings) Show(settingsFrom);
             else if (page == Page.Pause || page == Page.Tutorial) Show(Page.None);
             else if (lastScene == MenuScene && page != Page.Home) Show(Page.Home);
@@ -331,7 +331,7 @@ namespace Lizards
             Shade(443, 231, 1034, 89, Purple, true);
             Heading("TUTORIAL", 485, 231, 950, 89, 59, Color.white, TextAnchor.MiddleCenter);
             string Control(InputAction action) => bindings.Display(action);
-            string instructions = $"{Control(bindings.Move)}   Moverse\n{Control(bindings.Jump)}   Saltar\n{Control(bindings.Tongue)}   Usar la lengua\n{Control(bindings.Interact)}   Comer o interactuar\n{Control(bindings.Eject)}   Expulsar comida";
+            string instructions = $"{Control(bindings.Move)}   Moverse\n{Control(bindings.Jump)}   Saltar\n{Control(bindings.Tongue)}   Usar la lengua\n{Control(bindings.Interact)}   Interactuar\n{Control(bindings.Acid)}   Escupir comida (o ácido si no tienes)";
             Text(instructions, 535, 359, 850, 304, 32, Color.white, TextAnchor.UpperLeft);
             Button("EMPEZAR", 755, 711, 410, 72, () => Show(Page.None), 43, Purple);
         }

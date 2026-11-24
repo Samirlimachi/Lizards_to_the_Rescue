@@ -22,7 +22,22 @@ namespace Lizards
         public Vector3 LastVelocity { get; private set; }
         public bool Stunned => Time.time < stunUntil;
         public bool IsTugged => Time.time < tuggedUntil;
-        public float PlanarSpeed => Vector3.ProjectOnPlane(rb.linearVelocity, Vector3.up).magnitude;
+        public float PlanarSpeed => Vector3.ProjectOnPlane(Velocity, Vector3.up).magnitude;
+        /// <summary>Velocidad para animar: la del Rigidbody, o la que llega por red en las copias remotas (cinemáticas).</summary>
+        public Vector3 Velocity => netDriven ? netVelocity : rb.linearVelocity;
+        bool netDriven; Vector3 netVelocity;
+
+        /// <summary>Copia remota: recibe el estado de movimiento del dueño para que la animación sea la misma.</summary>
+        public void SetNetState(Vector3 velocity, bool grounded, bool swimming, bool sprinting, bool sliding)
+        {
+            bool landed = netDriven && grounded && !Grounded;
+            float impact = -netVelocity.y;
+            netDriven = true; netVelocity = velocity;
+            Grounded = grounded; Swimming = swimming; Sprinting = sprinting;
+            if (sliding && !Sliding) { slideUntil = Time.time + 0.2f; OnSlideStart?.Invoke(); }
+            else if (sliding) slideUntil = Time.time + 0.2f;
+            if (landed && impact > 1f) OnLanded?.Invoke(impact);
+        }
         public bool IsBraking { get; private set; }
         public bool Sliding => Time.time < slideUntil;
         public event Action OnSlideStart;

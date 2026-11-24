@@ -14,7 +14,7 @@ namespace Lizards
         {
             if (spin.sqrMagnitude > 0) transform.Rotate(spin * Time.fixedDeltaTime, Space.Self);
             if (body && body.isKinematic)
-                body.MovePosition(origin + travel * (.5f - .5f * Mathf.Cos(Time.time * Mathf.PI * 2 / Mathf.Max(1, period))));
+                body.MovePosition(origin + travel * (.5f - .5f * Mathf.Cos(LevelNet.SharedTime * Mathf.PI * 2 / Mathf.Max(1, period))));
         }
     }
 }

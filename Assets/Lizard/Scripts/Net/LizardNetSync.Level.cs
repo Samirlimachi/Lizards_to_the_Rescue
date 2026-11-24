@@ -28,6 +28,14 @@ namespace Lizards
             var e = LevelNet.Instance.Enemy(index); if (e && !e.Dead) e.Damage(Mathf.Clamp(amount, 0f, 50f), from);
         }
 
+        /// <summary>Golpe aplicado por el maestro: los demás muestran la reacción y la vida que le queda.</summary>
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        public void RPC_EnemyHit(int index, float amount, Vector3 from, float healthLeft)
+        {
+            if (!FromMaster || Runner.IsSharedModeMasterClient || !LevelNet.Instance) return;
+            var e = LevelNet.Instance.Enemy(index); if (e && !e.Dead) e.NetHit(amount, from, healthLeft);
+        }
+
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
         public void RPC_EnemyDied(int index, Vector3 from)
         { if (FromMaster && LevelNet.Instance) LevelNet.Instance.ApplyDeath(index, from); }
@@ -53,6 +61,33 @@ namespace Lizards
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
         public void RPC_CrateOpened(int index)
         { if (!HasStateAuthority && LevelNet.Instance) LevelNet.Instance.ApplyCrateOpened(index); }
+
+        // ---------------- objetos físicos compartidos (cajas, contrapesos) ----------------
+        /// <summary>El que envía pasa a simular este objeto (lo ha tocado o agarrado).</summary>
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        public void RPC_PropClaim(int index, int seq)
+        { LevelNet.Instance?.Prop(index)?.ApplyClaim(Object.StateAuthority, seq); }
+
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All, Channel = RpcChannel.Unreliable)]
+        public void RPC_PropPose(int index, int seq, Vector3 position, Quaternion rotation, Vector3 velocity)
+        { if (!HasStateAuthority) LevelNet.Instance?.Prop(index)?.ApplyPose(Object.StateAuthority, seq, position, rotation, velocity); }
+
+        // ---------------- placas, tablones y ácido ----------------
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        public void RPC_PlateState(int index, bool pressed)
+        { if (FromMaster && !Runner.IsSharedModeMasterClient) LevelNet.Instance?.ApplyPlate(index, pressed); }
+
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        public void RPC_Broken(int index, Vector3 impulse)
+        { if (!HasStateAuthority) LevelNet.Instance?.ApplyBroken(index, impulse); }
+
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        public void RPC_AcidHit(int index, Vector3 point)
+        { if (!HasStateAuthority) LevelNet.Instance?.ApplyAcidHit(index, point); }
+
+        [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+        public void RPC_AcidAtLeast(int index, int hits)
+        { if (!HasStateAuthority) LevelNet.Instance?.ApplyAcidAtLeast(index, hits); }
 
         // ---------------- expedición (cuota y balsa) ----------------
         [Rpc(RpcSources.StateAuthority, RpcTargets.All)]

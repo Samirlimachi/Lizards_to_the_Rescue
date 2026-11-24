@@ -39,7 +39,7 @@ namespace Lizards.EditorTools
             {
                 int i=count++%Ids.Length;var pos=old.transform.position;float value=old.nutrition;
                 var instance=(GameObject)PrefabUtility.InstantiatePrefab(prefabs[i],scene);
-                instance.transform.SetParent(root.transform,true);instance.name=Names[i]+" · lengua / comer [E]";
+                instance.transform.SetParent(root.transform,true);instance.name=Names[i]+" · cómela con la lengua";
                 instance.GetComponent<FoodItem>().nutrition=value;
                 float ground=pos.y-old.size;
                 foreach(var hit in Physics.RaycastAll(pos+Vector3.up*2,Vector3.down,6,~0,QueryTriggerInteraction.Ignore).OrderBy(h=>h.distance))

@@ -241,7 +241,7 @@ namespace Lizards
             var tt = c.GetComponentInParent<TongueTarget>();
             if (!tt) return false;
             var body = c.attachedRigidbody;
-            if (body && !body.isKinematic && body.mass < cfg.tongueAnchorMass)
+            if (body && (!body.isKinematic || NetProp.IsNetDynamic(body)) && body.mass < cfg.tongueAnchorMass)
             {
                 if (body.mass > s.tongueMaxGrabMass) { label = "Demasiado pesado en esta forma"; return false; }
                 label = body.mass <= s.tongueMaxLiftMass ? "Objeto ligero" : "Objeto pesado (arrastrar)";
@@ -629,6 +629,9 @@ namespace Lizards
                 nextCreak = Time.time + Mathf.Lerp(0.6f, 0.2f, Tension01);
                 Sfx.Play(Sfx.Stick, Vector3.Lerp(mouth, anchor, 0.5f), 0.15f + 0.35f * Tension01);
             }
+
+            // Objeto compartido en red (caja, contrapeso): al tirar de él pasamos a simularlo nosotros.
+            if (((mode == Mode.Pull && !food) || mode == Mode.Partner) && targetBody && !NetMirror) NetProp.ClaimLocal(targetBody);
 
             if (stretch > 0f && !(food&&food.GetComponent<SharedFoodSync>()?.Replica==true))
             {

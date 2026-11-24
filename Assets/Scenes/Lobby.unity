@@ -108792,6 +108792,7 @@ MonoBehaviour:
   respawnDelay: 3
   value: 1
   radius: 0.18
+  prefab: {fileID: 0}
 --- !u!1 &562784119
 GameObject:
   m_ObjectHideFlags: 0
@@ -220393,6 +220394,7 @@ MonoBehaviour:
   respawnDelay: 3
   value: 1
   radius: 0.18
+  prefab: {fileID: 0}
 --- !u!1 &1139747400
 GameObject:
   m_ObjectHideFlags: 0
@@ -220818,6 +220820,10 @@ PrefabInstance:
     - target: {fileID: 1907160010143238119, guid: 5ee72bc2d0b875041825df94f02cae66, type: 3}
       propertyPath: Launch.m_Name
       value: Launch
+      objectReference: {fileID: 0}
+    - target: {fileID: 1907160010143238119, guid: 5ee72bc2d0b875041825df94f02cae66, type: 3}
+      propertyPath: Sprint.m_Name
+      value: Sprint
       objectReference: {fileID: 0}
     - target: {fileID: 1907160010143238119, guid: 5ee72bc2d0b875041825df94f02cae66, type: 3}
       propertyPath: Tongue.m_Name
@@ -315168,6 +315174,7 @@ MonoBehaviour:
   respawnDelay: 3
   value: 1
   radius: 0.18
+  prefab: {fileID: 0}
 --- !u!1 &1648699370
 GameObject:
   m_ObjectHideFlags: 0
@@ -359290,6 +359297,7 @@ MonoBehaviour:
   respawnDelay: 3
   value: 1
   radius: 0.18
+  prefab: {fileID: 0}
 --- !u!1 &1858475008
 GameObject:
   m_ObjectHideFlags: 0
@@ -390217,6 +390225,7 @@ MonoBehaviour:
   respawnDelay: 3
   value: 1
   radius: 0.18
+  prefab: {fileID: 0}
 --- !u!1 &2032501565
 GameObject:
   m_ObjectHideFlags: 0

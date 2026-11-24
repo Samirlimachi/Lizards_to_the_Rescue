@@ -178,7 +178,7 @@ namespace Lizards
             // Compresión y estiramiento (muelle amortiguado + velocidad vertical).
             squashVel += (-160f * squash - 14f * squashVel) * dt;
             squash += squashVel * dt;
-            float vy = p.Motor.Grounded ? 0f : p.Body.linearVelocity.y;
+            float vy = p.Motor.Grounded ? 0f : p.Motor.Velocity.y;
             float air = Mathf.Clamp(Mathf.Abs(vy) / 15f, 0f, 1f) * cfg.squashAmount;
             float s = Mathf.Clamp(squash - air, -0.35f, 0.35f);
             bodyPivot.localScale = new Vector3(1f + s * 0.5f, 1f - s, 1f + s * 0.5f);
@@ -206,7 +206,7 @@ namespace Lizards
             {
                 float side = Mathf.Sign(armRestPos[i].x == 0f ? 1f : armRestPos[i].x);
                 float flap = Mathf.Sin(walkPhase * 2f + (side > 0 ? 0f : Mathf.PI)) * 18f * moveAmt;
-                if (!p.Motor.Grounded) flap = Mathf.Clamp(p.Body.linearVelocity.y * -4f, -20f, 40f) + Mathf.Sin(t * 20f) * 6f;
+                if (!p.Motor.Grounded) flap = Mathf.Clamp(p.Motor.Velocity.y * -4f, -20f, 40f) + Mathf.Sin(t * 20f) * 6f;
                 if (helpT < 1f || (p.Form == LizardForm.Giant && p.Motor.IsBraking)) flap = 30f + Mathf.Sin(t * 25f + i) * 25f;
                 arms[i].localRotation = armRest[i] * Quaternion.Euler(0f, 0f, side * flap);
             }
@@ -214,7 +214,7 @@ namespace Lizards
             // Rodar (solo cuerpo y manchas; cabeza y ojos quedan reconocibles arriba).
             if (p.Form == LizardForm.Giant)
             {
-                Vector3 v = Vector3.ProjectOnPlane(p.Body.linearVelocity, Vector3.up);
+                Vector3 v = Vector3.ProjectOnPlane(p.Motor.Velocity, Vector3.up);
                 if (v.sqrMagnitude > 0.01f)
                 {
                     float r = Mathf.Max(0.1f, stats.colliderRadius);

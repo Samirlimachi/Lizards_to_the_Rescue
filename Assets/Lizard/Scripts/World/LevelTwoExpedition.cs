@@ -35,6 +35,24 @@ namespace Lizards
         {
             Day=Mathf.Max(1,PlayerPrefs.GetInt("Lizards.ExpeditionDay",1));
             RequiredFood=Mathf.Min(maxQuota,baseQuota+(Day-1)*quotaPerDay);
+            SetupBowl();
+        }
+
+        /// <summary>
+        /// El embudo acumula: la comida se queda dentro y cuenta mientras esté en el hueco (si la sacan, se resta).
+        /// El volumen que cuenta es el cilindro del hueco (radio del borde) desde la rejilla hasta algo por encima del
+        /// aro, para que también cuente el montón que sobresale. Con efectos de "+10" y celebración al completar.
+        /// </summary>
+        void SetupBowl()
+        {
+            if(!bowl)return;
+            bowl.accumulate=true;bowl.holeRadius=3.35f;
+            var box=bowl.GetComponent<BoxCollider>();
+            float rim=1.1f;   // el aro queda ~0,25 m por encima de la parte alta de la caja original
+            if(box){float bottom=box.center.y-box.size.y*.5f;float oldTop=box.center.y+box.size.y*.5f;float top=oldTop+1.3f;rim=oldTop+.25f;box.size=new Vector3(box.size.x,top-bottom,box.size.z);box.center=new Vector3(box.center.x,(top+bottom)*.5f,box.center.z);}
+            var fx=bowl.GetComponent<ProvisionBowlFx>()??bowl.gameObject.AddComponent<ProvisionBowlFx>();
+            fx.rimHeight=rim;
+            fx.Init(bowl,this);
         }
         void Update()
         {

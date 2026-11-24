@@ -94,7 +94,7 @@ namespace Lizards
             {
                 Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false;
             }
-            if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame && LizardLobby.ClosedFrame != Time.frameCount)
             {
                 Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
             }

@@ -20,12 +20,14 @@ namespace Lizards
         {
             if(kingBelly)kingBelly.localScale=Vector3.Scale(bellyScale,Vector3.one*(1+Mathf.Sin(Time.time*1.4f)*.012f));
             var p=LizardPlayer.All.FirstOrDefault(x=>x.IsControlled);
-            if(playersBoard)playersBoard.text="JUGADORES\n"+string.Join("\n",LizardPlayer.All.Where(x=>x.IsControlled).Select(x=>"● "+x.displayName));
+            // En sala, el tablero muestra a todos los jugadores conectados (antes solo al local).
+            if(playersBoard)playersBoard.text="JUGADORES\n"+string.Join("\n",(LevelNet.Online?LizardNetSync.All.Where(n=>n&&n.Player).Select(n=>n.Player):LizardPlayer.All.Where(x=>x.IsControlled)).Select(x=>"● "+x.displayName));
             if(!p)return;
             if(p.transform.position.y < -2){p.Body.position=spawn;p.Body.linearVelocity=Vector3.zero;if(p.Form==LizardForm.Small)p.Rescue("refugio");}
-            if(Departing)
+            if(Departing&&!leader&&Time.time>departureAt+5)Departing=false; // salida de otro jugador que no llegó a viajar
+            if(Departing&&leader)
             {
-                if(Vector3.Distance(p.transform.position,boat.position)>7){Departing=false;p.Message("Salida cancelada: vuelve a la balsa.");}
+                if(Vector3.Distance(p.transform.position,boat.position)>7){Departing=false;p.Message("Salida cancelada: vuelve a la balsa.");if(LevelNet.Online)LevelNet.Local.RPC_LobbyDeparture(false,0,p.displayName);}
                 else if(Time.time>=departureAt){Departing=false;PcFrontEnd.Travel(levelScene);return;}
             }
             if(departureBoard)departureBoard.text=Departing?"LA BALSA SALE EN "+Mathf.CeilToInt(departureAt-Time.time)+"…":"EMBARCADERO\n[E] expedición a las alcantarillas\nPermanece en la balsa";
@@ -52,8 +54,24 @@ namespace Lizards
             if(!Application.CanStreamedLevelBeLoaded(levelScene)){p.Message(levelScene+" no está disponible en la compilación.");return false;}
             // Con sala abierta, la balsa lleva a todo el grupo (LevelNet carga el nivel para todos).
             if(Departing)return true;
-            Departing=true;departureAt=Time.time+3;Sfx.Play(Sfx.Help,boat.position);return true;
+            Departing=true;leader=true;departureAt=Time.time+3;Sfx.Play(Sfx.Help,boat.position);
+            if(LevelNet.Online)LevelNet.Local.RPC_LobbyDeparture(true,3,p.displayName);
+            return true;
         }
+        bool leader; // este cliente pidió la salida: él hace el viaje (LevelNet lleva a todo el grupo)
+
+        /// <summary>Otro jugador inicia o cancela la salida de la balsa: aquí solo se ve la cuenta atrás.</summary>
+        public void NetDeparture(bool departing, float remaining, string who)
+        {
+            if (leader && Departing) return;
+            leader = false;
+            Departing = departing;
+            departureAt = Time.time + remaining;
+            var p = LizardPlayer.All.FirstOrDefault(x => x.IsControlled);
+            if (departing) { Sfx.Play(Sfx.Help, boat.position); if (p) p.Message($"{who} ha subido a la balsa: ¡salimos en {Mathf.CeilToInt(remaining)} s!"); }
+            else if (p) p.Message($"{who} canceló la salida de la balsa.");
+        }
+
         public void CycleHat(LizardPlayer p)
         {
             outfit=(outfit+1)%6;SwampHatFactory.Equip(p,outfit);

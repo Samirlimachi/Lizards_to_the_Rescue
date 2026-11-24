@@ -55,9 +55,20 @@ namespace Lizards
             return best;
         }
 
+        public int Index => index;
+
         void Pick(int i)
         {
-            index = (i % palette.Length + palette.Length) % palette.Length;
+            NetSet(i);
+            // En sala, todos ven el agua del mismo color.
+            if (SharedFoodSync.Online) SharedFoodSync.Local.RPC_FountainColor(index);
+        }
+
+        /// <summary>Cambio de color del agua (propio o llegado por red).</summary>
+        public void NetSet(int i)
+        {
+            int next = (i % palette.Length + palette.Length) % palette.Length;
+            index = next;
             pulse = 1f;
             Sfx.Play(Sfx.Eject, transform.position + Vector3.up, 0.35f);
             Fx.Burst(spout ? spout.position : transform.position + Vector3.up * 2f, palette[index], 12, 2.5f, 0.1f);

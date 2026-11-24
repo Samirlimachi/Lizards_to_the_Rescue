@@ -72,6 +72,8 @@ namespace Lizards
 
         // ------------------------------------------------------------------ API
         public void Set(Expr e, float speed = 10f) { Current = e; goal = Preset(e); blendSpeed = speed; }
+        /// <summary>0–1: tamaño de ojos y boca (al derretirse el slime se hunden en el charco).</summary>
+        public float Visibility { get; set; } = 1f;
         public void LookAt(Vector3? worldPoint) { lookTarget = worldPoint; }
         public void Blink() { if (blinkT < 0f) blinkT = 0f; }
         /// <summary>Temblor de la cara (cargando un ataque).</summary>
@@ -227,7 +229,7 @@ namespace Lizards
             if (!a.t) return;
             Vector3 jitter = shake > 0f ? Random.insideUnitSphere * shake * 0.006f : Vector3.zero;
             e.root.SetPositionAndRotation(Place(a, out var rot, out var sq) + jitter, rot);
-            e.root.localScale = sq;
+            e.root.localScale = sq * Visibility;
             float es = cur.eyeSize;
             e.sclera.localPosition = new Vector3(0, 0, 0.004f); e.sclera.localScale = new Vector3(0.15f * es, 0.175f * es, 0.07f);
             // Iris y pupila (dentro de la esclerótica, coordenadas relativas a ella).
@@ -254,7 +256,7 @@ namespace Lizards
         {
             if (!aM.t) return;
             mouthRoot.SetPositionAndRotation(Place(aM, out var rot, out var sq), rot);
-            mouthRoot.localScale = sq;
+            mouthRoot.localScale = sq * Visibility;
             float open = cur.open, smile = cur.smile, width = cur.width;
             if (talkPhase > 0f) { talkPhase -= dt; open += Mathf.Abs(Mathf.Sin(Time.time * 26f)) * 0.35f; }
             if (Current == Expr.Dizzy) smile += Mathf.Sin(Time.time * 7f) * 0.25f;

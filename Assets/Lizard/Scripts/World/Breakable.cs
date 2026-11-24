@@ -10,10 +10,23 @@ namespace Lizards
         public bool requireGiant = true;
         public Color debrisColor = new Color(0.6f, 0.4f, 0.25f);
         bool broken;
+        /// <summary>Se rompió aquí (lo usa la red para romperlo en los demás clientes).</summary>
+        public event System.Action<Vector3> OnBroken;
+        public bool Broken => broken;
 
         public bool TryBreak(float speed, bool isGiant, Vector3 impulse)
         {
             if (broken || (requireGiant && !isGiant) || speed < requiredSpeed) return false;
+            Break(impulse);
+            OnBroken?.Invoke(impulse);
+            return true;
+        }
+
+        /// <summary>Rotura que llega por red (sin volver a anunciarla).</summary>
+        public void NetBreak(Vector3 impulse) { if (!broken) Break(impulse); }
+
+        void Break(Vector3 impulse)
+        {
             broken = true;
             var mat = LizardMaterials.Lit(debrisColor, 0.2f);
             var b = GetComponent<Collider>().bounds;
@@ -32,7 +45,6 @@ namespace Lizards
             Sfx.Play(Sfx.Break, b.center);
             Fx.Burst(b.center, debrisColor, 20, 4f, 0.2f);
             Destroy(gameObject);
-            return true;
         }
     }
 }

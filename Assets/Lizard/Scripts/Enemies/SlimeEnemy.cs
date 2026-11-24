@@ -14,7 +14,7 @@ namespace Lizards
     ///   HitReact 0–9 · Death 0–27 (charco)
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
-    public class SlimeEnemy : MonoBehaviour
+    public partial class SlimeEnemy : MonoBehaviour
     {
         public const float Fps = 30f;
         // Fotogramas de los clips (deben coincidir con Tools/Blender/slime_build.py).
@@ -41,7 +41,7 @@ namespace Lizards
         public float splashMin = 3.5f, splashMax = 10f, splashCooldown = 5.5f, splashSpread = 1.7f;
         public float puddleSlow = 0.5f, puddleLife = 5f;
 
-        enum State { Idle, Alert, Hop, Leap, Splash, Hit, Dead }
+        enum State { Idle, Alert, Hop, Leap, Splash, Hit, Dead, Swim }   // Swim al final: el número viaja por red
         State state = State.Idle;
         float stateStart, nextLeap, nextSplash, nextWander;
         Rigidbody rb;
@@ -90,13 +90,14 @@ namespace Lizards
                     State.Splash => SlimeFace.Expr.Puffed,
                     State.Hit => SlimeFace.Expr.Hurt,
                     State.Dead => SlimeFace.Expr.Dead,
+                    State.Swim => SlimeFace.Expr.Surprised,
                     _ => idleMood
                 }, s == State.Hit || s == State.Alert ? 22f : 10f);
         }
         static string ClipFor(State s) => s switch
         {
             State.Alert => "Alert", State.Hop => "HopMove", State.Leap => "AttackLeap", State.Splash => "AttackSplash",
-            State.Hit => "HitReact", State.Dead => "Death", _ => "Idle"
+            State.Hit => "HitReact", State.Dead => "Death", State.Swim => "Idle", _ => "Idle"
         };
 
         // ------------------------------------------------------------------ multijugador
@@ -118,6 +119,13 @@ namespace Lizards
         public void NetApply(Vector3 pos, float yaw, int netState, float frame, bool toPlayer)
         {
             if (!replica || state == State.Dead) return;
+            // Gran salto de posición = el maestro lo devolvió a su sitio (cayó fuera del mapa o no pudo salir del agua).
+            if (hasNetPose && (pos - netPos).sqrMagnitude > 16f)
+            {
+                EnemyPoof.Pop(transform.position + Vector3.up * 0.5f, SlimeGreen, 0.8f, false);
+                EnemyPoof.Pop(pos + Vector3.up * 0.5f, SlimeGreen, 0.8f, false);
+                rb.position = pos; transform.position = pos;
+            }
             netPos = pos; netRot = Quaternion.Euler(0, yaw, 0);
             if (!hasNetPose) { rb.position = pos; rb.rotation = netRot; transform.SetPositionAndRotation(pos, netRot); hasNetPose = true; }
             var s = (State)netState;
@@ -154,6 +162,7 @@ namespace Lizards
         void FixedUpdate()
         {
             if (state == State.Dead) return;
+            SplashCheck();   // chapuzón al caer al agua (en todos los clientes)
             if (replica) { ReplicaTick(); return; }
             target = NearestPlayer(out float dist);
             bool sees = target && dist < sightRange && LineOfSight(target);
@@ -161,8 +170,8 @@ namespace Lizards
             float f = Frame;
             UpdateFace(f, sees);
 
-            // Seguridad: si cae al agua o fuera del mapa vuelve a su sitio.
-            if (transform.position.y < home.y - 4f) { rb.position = home + Vector3.up * 0.2f; rb.linearVelocity = Vector3.zero; Enter(State.Idle); return; }
+            // En el agua flota y nada hacia la orilla; si cae fuera del mapa vuelve a su sitio (ver SlimeEnemy.Water.cs).
+            if (WaterTick()) return;
 
             switch (state)
             {
@@ -170,7 +179,7 @@ namespace Lizards
                     if (sees) { Enter(State.Alert); break; }
                     if (Time.time >= nextWander && grounded)
                     {
-                        var r = Random.insideUnitCircle * wanderRadius; hopTarget = home + new Vector3(r.x, 0, r.y);
+                        hopTarget = DryWanderTarget();
                         hopToPlayer = false; Enter(State.Hop); nextWander = Time.time + Random.Range(2.5f, 5f);
                     }
                     break;
@@ -188,12 +197,28 @@ namespace Lizards
                         launched = true;
                         Vector3 d = Flat(hopTarget - transform.position);
                         float flight = (HopLand - HopTakeoff) / Fps;
-                        float step = Mathf.Min(hopDistance, d.magnitude);
-                        rb.linearVelocity = (d.sqrMagnitude > 0.01f ? d.normalized : transform.forward) * (step / flight) + Vector3.up * (0.5f * -Physics.gravity.y * flight);
+                        Vector3 dir = d.sqrMagnitude > 0.01f ? d.normalized : transform.forward;
+                        float step, dy = 0f;
+                        if (escaping) { step = d.magnitude; flight = EscapeFlight; dy = hopTarget.y - transform.position.y; }   // salto para salir del agua
+                        else
+                        {
+                            // Nunca salta al agua ni a un hueco: acorta el saltito o salta en el sitio.
+                            step = SafeStep(transform.position, dir, Mathf.Min(hopDistance, d.magnitude));
+                            if (hopToPlayer && step < 0.05f) blockedByWater = true;
+                        }
+                        rb.linearVelocity = dir * (step / flight) + Vector3.up * (0.5f * -Physics.gravity.y * flight + dy / flight);
                     }
                     if (launched && !landed && f > HopTakeoff + 3 && grounded) { landed = true; rb.linearVelocity = new Vector3(0, rb.linearVelocity.y, 0); }
                     if (f >= HopLen)
                     {
+                        if (escaping) { escaping = false; hopToPlayer = false; Enter(State.Idle); break; }   // ya en tierra
+                        if (blockedByWater)
+                        {
+                            // El jugador está al otro lado del agua: le escupe gel si puede; si no, espera rabioso en la orilla.
+                            blockedByWater = false;
+                            if (target && sees && Time.time >= nextSplash && dist >= splashMin && dist <= splashMax) { Enter(State.Splash); break; }
+                            hopToPlayer = false; Enter(State.Idle); nextWander = Time.time + 1.2f; break;
+                        }
                         if (hopToPlayer && target && dist > loseRange) { hopToPlayer = false; Enter(State.Idle); break; }
                         if (hopToPlayer && target && sees && grounded && ChooseAttack(dist)) break;
                         if (!hopToPlayer && Flat(hopTarget - transform.position).magnitude < 0.5f) { Enter(State.Idle); break; }
@@ -218,7 +243,7 @@ namespace Lizards
 
         bool ChooseAttack(float dist)
         {
-            bool canLeap = Time.time >= nextLeap && dist >= leapMin && dist <= leapMax;
+            bool canLeap = Time.time >= nextLeap && dist >= leapMin && dist <= leapMax && LeapLandsDry();
             bool canSplash = Time.time >= nextSplash && dist >= splashMin && dist <= splashMax;
             if (canLeap && (!canSplash || dist < 4.5f || Random.value < 0.6f)) { Enter(State.Leap); return true; }
             if (canSplash) { Enter(State.Splash); return true; }
@@ -276,6 +301,7 @@ namespace Lizards
                     Vector3 to = target ? target.transform.position : transform.position + transform.forward * leapMin;
                     Vector3 d = Flat(to - transform.position); float dist = Mathf.Clamp(d.magnitude, 0.5f, leapMax);
                     Vector3 dir = d.sqrMagnitude > 0.01f ? d.normalized : transform.forward;
+                    dist = SafeStep(transform.position, dir, dist);   // el jugador se movió hacia el agua: cae en la orilla
                     leapTarget = transform.position + dir * dist;
                     float flight = (LeapImpact - LeapTakeoff) / Fps;
                     float dy = Mathf.Clamp(to.y - transform.position.y, -2f, 1.5f);

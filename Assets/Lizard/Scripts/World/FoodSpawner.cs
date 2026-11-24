@@ -16,6 +16,8 @@ namespace Lizards
         void Update()
         {
             if (current && current.State != FoodState.Consumed) { nextSpawn = Time.time + respawnDelay; return; }
+            // En sala, la fruta generada a mano no existiría en los demás: se usa la manzana de red.
+            if (!prefab && SharedFoodSync.Online) prefab = Resources.Load<FoodItem>("NetFood/Apple");
             // En multijugador solo el maestro hace aparecer comida compartida y la anuncia a los demás.
             var sync = prefab ? prefab.GetComponent<SharedFoodSync>() : null;
             if (sync && SharedFoodSync.Online && !SharedFoodSync.Master) { current = null; return; }

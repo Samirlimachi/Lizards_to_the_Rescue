@@ -33,6 +33,56 @@ namespace Lizards
         LizardPlayer ejectedBy;
 
         void Awake() { Body = GetComponent<Rigidbody>(); }
+
+        // ---- Tamaño visible ----
+        // La comida se veía muy pequeña al lado de la lagartija (~1,45 m). Al aparecer en juego se agranda su dibujo y su
+        // colisión una sola vez: la pequeña ×1,6, la mediana ×1,3; la grande (salteña, sandía) se queda igual.
+        // Tragar/arrastrar no cambia: eso lo decide 'size' (comparado con la boca), que no se toca.
+        // 'enlarged' viaja con las copias (Instantiate): la comida escupida o partida no vuelve a crecer.
+        public const float SmallFoodScale = 1.6f, MediumFoodScale = 1.3f;
+        [SerializeField, HideInInspector] bool enlarged;
+
+        void Start() => Enlarge();
+
+        public static float ScaleFor(float size) => size <= 0.3f ? SmallFoodScale : size <= 0.5f ? MediumFoodScale : 1f;
+
+        void Enlarge()
+        {
+            if (enlarged) return;
+            enlarged = true;
+            float k = ScaleFor(size);
+            if (k <= 1.001f) return;
+            var col = GetComponent<Collider>();
+            float halfHeight = col ? col.bounds.extents.y : 0f;
+            transform.localScale *= k;
+            // Crece desde el suelo, no hacia dentro de él (si no, saltaría al empezar).
+            transform.position += Vector3.up * halfHeight * (k - 1f);
+            // Si al crecer quedó metida en una pared, se aparta ya mismo hacia su lado (así una fruta tras la membrana
+            // de ácido no la atraviesa). Si toca otra comida, se separa suave en vez de salir disparada.
+            if (col) PushOutOfWalls(col);
+            if (Body) Body.maxDepenetrationVelocity = 1.5f;
+        }
+
+        static readonly Collider[] overlaps = new Collider[16];
+        void PushOutOfWalls(Collider col)
+        {
+            var b = col.bounds;   // aún sin sincronizar: se estima con el factor
+            float k = ScaleFor(size);
+            Vector3 center = b.center + Vector3.up * b.extents.y * (k - 1f);
+            int n = Physics.OverlapBoxNonAlloc(center, b.extents * k * 0.95f, overlaps, transform.rotation, ~0, QueryTriggerInteraction.Ignore);
+            bool walls = false;
+            for (int i = 0; i < n; i++) { var o = overlaps[i]; if (!o.transform.IsChildOf(transform) && !o.GetComponentInParent<FoodItem>() && (!o.attachedRigidbody || o.attachedRigidbody.isKinematic)) { walls = true; break; } }
+            if (!walls) return;
+            Physics.SyncTransforms();
+            for (int i = 0; i < n; i++)
+            {
+                var o = overlaps[i];
+                if (o.transform.IsChildOf(transform) || o.GetComponentInParent<FoodItem>() || (o.attachedRigidbody && !o.attachedRigidbody.isKinematic)) continue;
+                if (Physics.ComputePenetration(col, transform.position, transform.rotation, o, o.transform.position, o.transform.rotation, out var dir, out var dist))
+                    transform.position += dir * (dist + 0.01f);
+            }
+            if (Body) Body.position = transform.position;
+        }
         void OnEnable() { if (!All.Contains(this)) All.Add(this); }
         void OnDisable() { All.Remove(this); }
 

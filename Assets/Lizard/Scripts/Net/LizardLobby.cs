@@ -32,7 +32,7 @@ namespace Lizards
         bool connecting;
         NetworkRunner runner;
         Texture2D white;
-        GUIStyle label, field, button, title, small, buttonGhost;
+        GUIStyle label, field, button, title, small, buttonGhost, closeStyle, hint;
 
         void Start()
         {
@@ -50,9 +50,25 @@ namespace Lizards
 
         void OnDestroy() => Visible = false;
 
+        /// <summary>Fotograma en que se cerró el panel con Escape (para que ese mismo Escape no abra la pausa).</summary>
+        public static int ClosedFrame { get; private set; } = -1;
+
         void Update()
         {
-            if (Visible) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+            if (!Visible) return;
+            Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb != null && kb.escapeKey.wasPressedThisFrame) Close();
+        }
+
+        /// <summary>Cierra el panel y vuelve al juego (si se estaba conectando, la conexión sigue en segundo plano).</summary>
+        public void Close()
+        {
+            if (!Visible) return;
+            Visible = false;
+            ClosedFrame = Time.frameCount;
+            GUIUtility.keyboardControl = 0;
+            Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false;
         }
 
         async void Connect() => status = await ConnectAsync(playerName, roomCode, RoomAction.Legacy);
@@ -129,7 +145,7 @@ namespace Lizards
                 }
                 runner.SetPlayerObject(localPlayer, networkPlayer);
                 foreach (var player in FindObjectsByType<LizardPlayer>(FindObjectsInactive.Exclude))
-                    if (!player.GetComponent<NetworkObject>()) player.gameObject.SetActive(false);
+                    if (!player.GetComponent<NetworkObject>() && player.IsControlled) player.gameObject.SetActive(false);
                 Visible = false;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
@@ -173,6 +189,8 @@ namespace Lizards
             small = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.MiddleCenter, wordWrap = true, normal = { textColor = new Color(0.85f, 0.88f, 0.92f) } };
             field = new GUIStyle(GUI.skin.textField) { fontSize = 18, padding = new RectOffset(10, 10, 6, 6), normal = { textColor = Color.white, background = null }, focused = { textColor = Color.white, background = null }, hover = { textColor = Color.white, background = null } };
             button = new GUIStyle(GUI.skin.button) { fontSize = 16, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.16f, 0.1f, 0.06f), background = null }, hover = { textColor = new Color(0.1f, 0.06f, 0.03f), background = null }, active = { textColor = Color.black, background = null } };
+            closeStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white }, hover = { textColor = Color.white } };
+            hint = new GUIStyle(small) { fontSize = 11, normal = { textColor = new Color(0.55f, 0.62f, 0.7f) } };
             buttonGhost = new GUIStyle(button) { fontSize = 14, normal = { textColor = new Color(0.85f, 0.88f, 0.92f), background = null }, hover = { textColor = Color.white, background = null } };
         }
 
@@ -201,6 +219,13 @@ namespace Lizards
             float y = Screen.height / 2f - 190f;
             Box(new Rect(x - 16f, y - 16f, w + 32f, 380f), new Color(0.06f, 0.09f, 0.13f, 0.96f));
             GUI.Label(new Rect(x, y, w, 34f), "Lizards to the Rescue", title);
+
+            // Botón X (arriba a la derecha) para salir del panel; también se cierra con Escape.
+            var close = new Rect(x + w - 30f, y - 6f, 34f, 34f);
+            bool overClose = close.Contains(Event.current.mousePosition);
+            Box(close, overClose ? new Color(0.85f, 0.3f, 0.25f) : new Color(0.2f, 0.26f, 0.33f));
+            if (GUI.Button(close, "X", closeStyle)) Close();
+            GUI.Label(new Rect(x, y + 346f, w, 18f), "Esc para salir", hint);
             y += 46f;
 
             GUI.enabled = !connecting;

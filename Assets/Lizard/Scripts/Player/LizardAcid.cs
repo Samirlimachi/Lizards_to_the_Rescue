@@ -74,7 +74,11 @@ namespace Lizards
             // Arco suave: compensa un poco la caída para que llegue cerca del punto apuntado.
             float dist = Vector3.Distance(origin, aim);
             float lift = cfg.acidArcUp * Mathf.Clamp01(dist / 15f);
-            AcidProjectile.Spawn(p, origin + dir * 0.2f, dir * cfg.acidSpeed + Vector3.up * lift);
+            Vector3 start = origin + dir * 0.2f, velocity = dir * cfg.acidSpeed + Vector3.up * lift;
+            AcidProjectile.Spawn(p, start, velocity);
+            // En sala, los demás ven volar el mismo escupitajo (copia sin daño).
+            var net = GetComponent<LizardNetSync>();
+            if (net && net.Object && net.IsLocal) net.RPC_AcidSpit(start, velocity);
             p.Visual?.PlaySpit();
             Sfx.Play(Sfx.Acid, origin);
         }

@@ -94,7 +94,7 @@ namespace Lizards.EditorTools
         {
             for(int i=0;i<count;i++)
             {
-                var f=FoodFactory.CreateFruit(p+new Vector3((i%4)*.7f, .3f, (i/4)*.7f),value,.20f,pink);f.name="Fruta · comer [E] / arrastrar";f.transform.SetParent(root);
+                var f=FoodFactory.CreateFruit(p+new Vector3((i%4)*.7f, .3f, (i/4)*.7f),value,.20f,pink);f.name="Fruta · cómela con la lengua";f.transform.SetParent(root);
                 var leaf=Shape("Hoja",PrimitiveType.Sphere,f.transform.position+Vector3.up*.20f,new Vector3(.2f,.04f,.1f),mint,null,false);leaf.transform.SetParent(f.transform,true);
             }
         }
